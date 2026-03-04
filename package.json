@@ -7,10 +7,10 @@
   "author": "Rob Darling",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DarlingNorthAdventures/RunQL.git"
+    "url": "https://github.com/DVCodeLabs/RunQL.git"
   },
   "bugs": {
-    "url": "https://github.com/DarlingNorthAdventures/RunQL/issues"
+    "url": "https://github.com/DVCodeLabs/RunQL/issues"
   },
   "homepage": "https://runql.com",
   "keywords": [
