@@ -28,3 +28,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 - Fix for a bug that caused the initialization screen to not show up.
 - Update to add AGENTS.md to the project root.
+
+## [1.2.1] - 2026-03-10
+
+### Added
+- Fix for links on welcome page.
