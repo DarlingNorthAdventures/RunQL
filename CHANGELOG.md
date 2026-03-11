@@ -23,3 +23,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - ERD generation and artifact persistence.
 - Optional AI-assisted docs/comments with provider flexibility.
 
+## [1.1.0] - 2026-03-10
+
+### Added
+- Fix RunQL Welcome Screen for initialization.
