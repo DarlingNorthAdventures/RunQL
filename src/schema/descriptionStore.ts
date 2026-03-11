@@ -12,7 +12,7 @@ export interface DescriptionEntry {
 }
 
 export interface SchemaDescriptionsFile {
-    __dpHeader: string;
+    __runqlHeader: string;
     version: string;
     generatedAt: string;
     connectionId: string;

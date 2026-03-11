@@ -157,7 +157,7 @@ export async function saveSchema(introspection: SchemaIntrospection) {
   if (!await fileExists(descUri)) {
     // Create default
     const defaultDesc: SchemaDescriptionsFile = {
-      __dpHeader: "#RunQL created",
+      __runqlHeader: "#RunQL created",
       version: "0.1",
       generatedAt: new Date().toISOString(),
       connectionId: normalized.connectionId,

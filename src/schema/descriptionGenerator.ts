@@ -83,7 +83,7 @@ export async function generateDescriptionsWithAI(context: vscode.ExtensionContex
 
     if (!existing) {
         existing = {
-            __dpHeader: "#RunQL created",
+            __runqlHeader: "#RunQL created",
             version: "0.1",
             generatedAt: new Date().toISOString(),
             connectionId: introspection.connectionId,
