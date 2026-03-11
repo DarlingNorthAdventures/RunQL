@@ -278,7 +278,16 @@ function App() {
                     <li>
                         <a
                             style={styles.link}
-                            href="https://ruql.com/docs"
+                            href="https://runql.com/opensource/"
+                            target="_blank"
+                        >
+                            RunQL Website
+                        </a>
+                    </li>
+                    <li>
+                        <a
+                            style={styles.link}
+                            href="https://github.com/DVCodeLabs/RunQL/blob/main/README.md"
                             target="_blank"
                         >
                             RunQL Documentation
@@ -287,7 +296,7 @@ function App() {
                     <li>
                         <a
                             style={styles.link}
-                            href="https://ruql.com/docs/getting-started"
+                            href="https://github.com/DVCodeLabs/RunQL/blob/main/docs/getting-started.md"
                             target="_blank"
                         >
                             Getting Started Guide
@@ -296,7 +305,7 @@ function App() {
                     <li>
                         <a
                             style={styles.link}
-                            href="https://ruql.com/community"
+                            href="https://github.com/DVCodeLabs/RunQL"
                             target="_blank"
                         >
                             Community & Support
