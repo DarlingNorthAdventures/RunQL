@@ -108,8 +108,8 @@ This repo stores SQL, schemas, and ERD metadata in known locations. When a user 
 1. Search for existing queries first.
    - Check \`RunQL/queries/\` (including subdirectories) and \`RunQL/system/queryIndex.json\`.
 2. If nothing relevant exists, read the schema and docs.
-   - Use \`RunQL/schemas/\` for table/column definitions and descriptions.
-   - Use \`RunQL/system/erd/\` to understand joins and relationships.
+   - Use \`RunQL/schemas/\` for table/column definitions, relationships (if available), and descriptions.
+   - Use \`RunQL/system/erd/\` if populated, to understand joins and relationships.
 3. Only then should you create a new SQL query file (.sql)
    - Prefer to reuse or extend existing patterns when possible.
    - Do NOT create any other RunQL files when creating sql - only create .sql files
