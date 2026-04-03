@@ -79,7 +79,7 @@ export class ExplorerViewProvider implements vscode.TreeDataProvider<ExplorerIte
 
       return schemas
         .filter(s => showInternal || !INTERNAL_SCHEMAS.includes(s.name))
-        .map(s => ExplorerItem.fromSchemaModel(s, intro, this.context.extensionUri));
+        .map(s => ExplorerItem.fromSchemaModel(s, intro, this.context.extensionUri, element.profile!.allowCsvExport ?? true));
     }
 
     // Level 3: Folders (Children of Schema)
@@ -354,7 +354,7 @@ export class ExplorerItem extends vscode.TreeItem {
   }
 
   // 3. Schema Node (Merged from SchemaItem)
-  static fromSchemaModel(s: SchemaModel, introspection: SchemaIntrospection, extensionUri?: vscode.Uri): ExplorerItem {
+  static fromSchemaModel(s: SchemaModel, introspection: SchemaIntrospection, extensionUri?: vscode.Uri, allowCsvExport: boolean = true): ExplorerItem {
     const shouldExpand = s.name === 'imports' || s.name === 'data_cache';
     const state = shouldExpand ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed;
     const nodeId = `${introspection.connectionId}/${s.name}`;
@@ -389,8 +389,7 @@ export class ExplorerItem extends vscode.TreeItem {
     }
 
     // Context value matches package.json expectations (renamed to explorerView)
-    // "viewItem == runql.schema.schema"
-    item.contextValue = "runql.schema.schema";
+    item.contextValue = allowCsvExport === false ? "runql.schema.schema.nobackup" : "runql.schema.schema";
 
     return item;
   }

@@ -322,8 +322,8 @@ async function exportTableCommand(item: ExportTreeItem | undefined, _context: vs
         return;
     }
 
-    // Check server-side CSV export flag (defaults to true for non-SecureQL connections)
-    if (profile.allowCsvExport === false) {
+    // Check server-side CSV export flag (SecureQL only)
+    if (profile.dialect === 'secureql' && profile.allowCsvExport === false) {
         vscode.window.showInformationMessage("CSV export is not available for this connection.");
         return;
     }
@@ -521,8 +521,8 @@ async function backupSchemaCommand(item: BackupSchemaTreeItem | undefined, exten
         return;
     }
 
-    // 3. Check CSV export permission (blocks SecureQL connections with exports off)
-    if (profile.allowCsvExport === false) {
+    // 3. Check CSV export permission (SecureQL only)
+    if (profile.dialect === 'secureql' && profile.allowCsvExport === false) {
         vscode.window.showInformationMessage('Schema backup is not available for this connection.');
         return;
     }

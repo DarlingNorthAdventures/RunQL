@@ -612,7 +612,7 @@
         },
         {
           "command": "runql.schema.createTable",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "inline@0"
         },
         {
@@ -622,17 +622,17 @@
         },
         {
           "command": "runql.connection.introspect",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "inline@1"
         },
         {
           "command": "runql.schema.generateDescriptionsWithAI",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "inline@3"
         },
         {
           "command": "runql.erd.openSchema",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "inline@2"
         },
         {
@@ -720,22 +720,22 @@
 
         {
           "command": "runql.connection.introspect",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "1_schema@1"
         },
         {
           "command": "runql.schema.createTable",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "1_schema@2"
         },
         {
           "command": "runql.erd.openSchema",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "2_view@1"
         },
         {
           "command": "runql.schema.generateDescriptionsWithAI",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "2_view@2"
         },
         {
@@ -783,7 +783,7 @@
         },
         {
           "command": "runql.schema.generateDescriptionsWithAI",
-          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && viewItem == runql.schema.schema",
+          "when": "(view == runql.explorerView || view == runql.explorerViewBuiltin) && (viewItem == runql.schema.schema || viewItem == runql.schema.schema.nobackup)",
           "group": "inline@10"
         },
         {
