@@ -68,6 +68,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<RunQLE
   Logger.initialize("RunQL");
   Logger.info("RunQL extension activating...");
 
+  // Migrate deprecated runql.ai.provider → runql.ai.backend
+  const { migrateAiProviderSetting } = await import('./ai/aiService');
+  await migrateAiProviderSetting();
+
   let projectInitializedAtStartup = false;
   let autoWelcomeShownThisSession = false;
   const tablePreviewContextByDocUri = new Map<string, {
@@ -1648,6 +1652,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<RunQLE
     vscode.commands.registerCommand("runql.schema.generateDescriptionsWithAI", async (item: ExplorerItem) => {
       const { generateDescriptionsWithAI } = require('./schema/descriptionGenerator');
       await generateDescriptionsWithAI(context, item);
+    })
+  );
+
+  // Copy Prompt fallback commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand("runql.ai.sendCommentToChat", async () => {
+      const { sendCommentToChat } = require('./ai/sendToChat');
+      await sendCommentToChat(context);
+    }),
+    vscode.commands.registerCommand("runql.ai.sendDocumentToChat", async () => {
+      const { sendDocumentToChat } = require('./ai/sendToChat');
+      await sendDocumentToChat(context);
+    }),
+    vscode.commands.registerCommand("runql.ai.sendSchemaDescriptionsToChat", async (item: ExplorerItem) => {
+      const { sendSchemaDescriptionsToChat } = require('./ai/sendToChat');
+      await sendSchemaDescriptionsToChat(context, item);
+    }),
+    vscode.commands.registerCommand("runql.ai.importSchemaDescriptionResponses", async () => {
+      const { importSchemaDescriptionResponses } = require('./schema/descriptionImporter');
+      await importSchemaDescriptionResponses(context);
     })
   );
 
