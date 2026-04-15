@@ -58,3 +58,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added settings to select Claude Code or Codex extensions for the AI provider.
 - You can now use Copilot, Claude Code extension, or Codex extension.
 - When using the Codex extension, the files are added as context and the prompt is automatically copied to your clipboard so you can paste it into chat.
+
+## [1.5.0] - 2026-04-15
+
+### Added
+Redesign AI settings, add What's New guidance, and normalize AI settings across user/workspace scopes
+
+- replace internal AI terminology with clearer user-facing settings: AI Source, AI Extension, API Provider, AI Model, and API Base URL
+- set new defaults to GitHub Copilot / VS Code AI, Automatic extension, and gpt-4.1
+- remove deprecated AI settings from the settings manifest
+- add a What's New page for upgrades and expose a command to reopen it
+- add an AI Settings Guide to the welcome page for new installs
+- reset AI settings to the new defaults for this release in both user and workspace scopes
+- keep user and workspace AI settings synchronized after config changes
+- clear removed legacy AI keys to avoid stale workspace overrides
+- update README and docs to reflect the new AI setup model
