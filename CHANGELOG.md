@@ -78,3 +78,9 @@ Redesign AI settings, add What's New guidance, and normalize AI settings across 
 
 ### Added
 - Redeploy for the full IDE build process.
+
+
+## [1.5.2] - 2026-04-15
+
+### Added
+- Remove duckdb from the core client and prep to release duckdb support as its own extension adapter.
