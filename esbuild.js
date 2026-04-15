@@ -35,7 +35,7 @@ async function main() {
         sourcesContent: false,
         platform: 'node',
         outdir: 'dist',
-        external: ['vscode', 'duckdb', 'pg-native', 'cpu-features'],
+        external: ['vscode', 'pg-native', 'cpu-features'],
         logLevel: 'silent',
         loader: {
             '.node': 'file',

@@ -20,12 +20,6 @@ export function setSecureQLSaveProfile(cb: (profile: any) => Promise<void>): voi
 
 function registerBuiltinAdapters() {
     if (adapterFactories.size > 0) return;
-    // DuckDB is lazy-loaded to avoid crashing the extension when the native
-    // module is unavailable (it's an optional dependency).
-    adapterFactories.set('duckdb', () => {
-        const { DuckDBAdapter } = require('./adapters/duckdb');
-        return new DuckDBAdapter();
-    });
     adapterFactories.set('postgres', () => new PostgresAdapter());
     adapterFactories.set('mysql', () => new MySQLAdapter());
     adapterFactories.set('secureql', () => new SecureQLAdapter(_saveProfileCallback));
