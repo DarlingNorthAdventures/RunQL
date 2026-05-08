@@ -110,3 +110,8 @@ Also update watchers, docs, and tests for the new storage layout.
 - This will return all admin schemas/views in one connection (e.g. information_schema, performance_schema, etc.)
 - When creating a connection you now choose between two types: data access or db admin.
 - This is supported for all connections including SecureQL.
+
+## [1.7.1] - 2026-05-08
+
+### Fix
+Fixed missing image icons.
