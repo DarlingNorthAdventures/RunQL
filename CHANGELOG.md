@@ -115,3 +115,8 @@ Also update watchers, docs, and tests for the new storage layout.
 
 ### Fix
 Fixed missing image icons.
+
+## [1.7.2] - 2026-05-08
+
+### Fix
+Bumping the version to fix the connection with the RunQL-IDE for auto-updates.
