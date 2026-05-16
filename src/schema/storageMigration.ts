@@ -5,9 +5,11 @@ import { SchemaIntrospection } from '../core/types';
 import {
   LEGACY_SCHEMA_BUNDLE_LAYOUT_FILE,
   buildSchemaBundlePaths,
+  getMigrationBackupRoot,
   getMigrationBackupErdRoot,
   getMigrationBackupManifestUri,
   getMigrationBackupSchemasRoot,
+  getSchemaMigrationsRoot,
   getSchemaBundleMigrationStateUri,
   getSchemasRoot,
   listSchemaBundleDirs,
@@ -105,6 +107,26 @@ async function listLegacySchemaBaseNames(dpDir: vscode.Uri): Promise<string[]> {
       .map((name) => name.replace(/\.json$/i, ''));
   } catch {
     return [];
+  }
+}
+
+async function hasLegacySchemaStorage(dpDir: vscode.Uri): Promise<boolean> {
+  const schemasRoot = getSchemasRoot(dpDir);
+  try {
+    const entries = await vscode.workspace.fs.readDirectory(schemasRoot);
+    if (entries.some(([name]) => name.endsWith('.json'))) {
+      return true;
+    }
+  } catch {
+    // Ignore absent schema directory.
+  }
+
+  const legacyErdRoot = vscode.Uri.joinPath(dpDir, 'system', 'erd');
+  try {
+    const entries = await vscode.workspace.fs.readDirectory(legacyErdRoot);
+    return entries.some(([name]) => name.endsWith('.json'));
+  } catch {
+    return false;
   }
 }
 
@@ -236,6 +258,12 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
     return;
   }
 
+  if (!await hasLegacySchemaStorage(dpDir)) {
+    await normalizeBundleLayoutFilenames(dpDir);
+    await removeLegacyErdDirIfEmpty(dpDir);
+    return;
+  }
+
   const manifest: MigrationManifest = {
     version: '1',
     startedAt: new Date().toISOString(),
@@ -259,7 +287,7 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
     await backupRemainingLegacyFiles(dpDir, processedBases, manifest);
     manifest.completedAt = new Date().toISOString();
 
-    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(dpDir, 'system', 'migration_backup'));
+    await vscode.workspace.fs.createDirectory(getMigrationBackupRoot(dpDir));
     await writeJson(getMigrationBackupManifestUri(dpDir), manifest);
 
     const state: MigrationState = {
@@ -270,14 +298,14 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
       migratedBundles,
       backupManifestPath: getMigrationBackupManifestUri(dpDir).fsPath,
     };
-    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(dpDir, 'system', 'migrations'));
+    await vscode.workspace.fs.createDirectory(getSchemaMigrationsRoot(dpDir));
     await writeJson(stateUri, state);
     await normalizeBundleLayoutFilenames(dpDir);
     await removeLegacyErdDirIfEmpty(dpDir);
   } catch (err) {
     manifest.completedAt = new Date().toISOString();
     manifest.warnings.push(`Migration failed: ${String(err)}`);
-    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(dpDir, 'system', 'migration_backup'));
+    await vscode.workspace.fs.createDirectory(getMigrationBackupRoot(dpDir));
     await writeJson(getMigrationBackupManifestUri(dpDir), manifest);
 
     const state: MigrationState = {
@@ -289,7 +317,7 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
       migratedBundles,
       backupManifestPath: getMigrationBackupManifestUri(dpDir).fsPath,
     };
-    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(dpDir, 'system', 'migrations'));
+    await vscode.workspace.fs.createDirectory(getSchemaMigrationsRoot(dpDir));
     await writeJson(stateUri, state);
     await normalizeBundleLayoutFilenames(dpDir);
     await removeLegacyErdDirIfEmpty(dpDir);

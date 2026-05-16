@@ -225,6 +225,13 @@ describe('schema storage', () => {
     expect(layout.connectionName).toBe('Analytics Prod');
   });
 
+  it('does not create migration folders when no legacy schema files exist', async () => {
+    await runSchemaBundleMigrationIfNeeded();
+
+    expect(fileExists('/workspace/RunQL/system/migrations')).toBe(false);
+    expect(fileExists('/workspace/RunQL/system/migration_backup')).toBe(false);
+  });
+
   it('migrates legacy flat files once and moves originals into migration_backup', async () => {
     const legacySchema = sampleSchema('Legacy');
     writeJsonAt('/workspace/RunQL/schemas/Legacy.json', legacySchema);

@@ -124,6 +124,7 @@ button {
 }
 
 .save-confirm-header {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -149,6 +150,7 @@ button {
 }
 
 .save-confirm-meta {
+    flex: 0 0 auto;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
@@ -183,14 +185,18 @@ button {
 }
 
 .save-confirm-sql-list {
+    flex: 1 1 auto;
+    min-height: 0;
     padding: 0 16px 12px;
     overflow: auto;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
 
 .save-confirm-sql-card {
+    flex: 0 0 auto;
     border: 1px solid var(--vscode-widget-border);
     border-radius: 10px;
     overflow: hidden;
@@ -233,6 +239,7 @@ button {
 }
 
 .save-confirm-actions {
+    flex: 0 0 auto;
     padding: 12px 16px 16px;
     display: flex;
     justify-content: flex-end;

@@ -120,3 +120,9 @@ Fixed missing image icons.
 
 ### Fix
 Bumping the version to fix the connection with the RunQL-IDE for auto-updates.
+
+## [1.7.3] - 2026-05-16
+
+### Changes
+- When a user edits multiple rows of data the confirmation dialog would show the SQL statements in a collapsed state.  Now this dialog window is scrollable and the statements are not collapsed, making the statements more visible.
+- Fix for unnecessary migration folders getting created on initialization of a new project folder.

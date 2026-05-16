@@ -17,8 +17,9 @@ export async function ensureDPDirs(): Promise<vscode.Uri> {
     // Directory already exists - this is expected and safe to ignore
   }
 
-  // Create subdirs (ignore if already exist)
-  const subs = ['schemas', 'queries', 'system', 'system/migrations', 'system/migration_backup', 'system/prompts'];
+  // Create subdirs (ignore if already exist). Migration-specific directories are
+  // created by the migration runner only when legacy files need migration.
+  const subs = ['schemas', 'queries', 'system', 'system/prompts'];
   for (const s of subs) {
     try {
       await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(dpDir, s));
