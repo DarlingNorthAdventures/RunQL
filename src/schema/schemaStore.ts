@@ -256,6 +256,93 @@ function workspaceRelative(uri: vscode.Uri): string {
   return root ? uri.fsPath.replace(`${root}/`, '').replace(/\\/g, '/') : uri.fsPath;
 }
 
+function uriBaseName(uri: vscode.Uri): string {
+  const normalized = uri.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
+  return normalized.split('/').pop() || 'schema';
+}
+
+function timestampSuffix(value: string): string {
+  return value.replace(/[^0-9]/g, '').slice(0, 14) || 'deleted';
+}
+
+async function resolveDeletedSchemaArchiveDir(
+  dpDir: vscode.Uri,
+  connectionId: string,
+  connectionName: string | undefined,
+  schemaName: string,
+  deletedAt: string
+): Promise<vscode.Uri> {
+  const deletedConnectionDir = vscode.Uri.joinPath(
+    dpDir,
+    'schemas',
+    'deleted',
+    sanitizeSchemaBundleName(connectionName, connectionId)
+  );
+  await vscode.workspace.fs.createDirectory(deletedConnectionDir);
+
+  const preferredName = sanitizeSchemaBundleName(schemaName, 'schema');
+  const preferredDir = vscode.Uri.joinPath(deletedConnectionDir, preferredName);
+  if (!await fileExists(preferredDir)) {
+    return preferredDir;
+  }
+
+  const suffix = timestampSuffix(deletedAt);
+  let attempt = vscode.Uri.joinPath(deletedConnectionDir, `${preferredName}--${suffix}`);
+  let index = 2;
+  while (await fileExists(attempt)) {
+    attempt = vscode.Uri.joinPath(deletedConnectionDir, `${preferredName}--${suffix}-${index}`);
+    index++;
+  }
+  return attempt;
+}
+
+async function archiveSchemaBundlesMissingFromIntrospection(
+  dpDir: vscode.Uri,
+  connectionDir: vscode.Uri,
+  normalized: SchemaIntrospection
+): Promise<void> {
+  const currentSchemaNames = new Set(normalized.schemas.map(schema => schema.name));
+  const currentBundleNames = new Set(normalized.schemas.map(schema => sanitizeSchemaBundleName(schema.name, 'schema')));
+  const existingBundleDirs = await listSchemaBundleDirsInConnection(connectionDir);
+  const deletedAt = new Date().toISOString();
+
+  if (normalized.schemas.length === 0 && existingBundleDirs.length > 0) {
+    Logger.warn(
+      `Skipping deleted-schema archival for ${normalized.connectionName ?? normalized.connectionId}: introspection returned no schemas.`
+    );
+    return;
+  }
+
+  for (const bundleDir of existingBundleDirs) {
+    const loaded = await loadSchemaBundle(bundleDir);
+    const existingSchemaName = loaded?.schemas?.[0]?.name || uriBaseName(bundleDir);
+    const existingBundleName = uriBaseName(bundleDir);
+    if (currentSchemaNames.has(existingSchemaName) || currentBundleNames.has(existingBundleName)) {
+      continue;
+    }
+
+    const archiveDir = await resolveDeletedSchemaArchiveDir(
+      dpDir,
+      normalized.connectionId,
+      normalized.connectionName,
+      existingSchemaName,
+      deletedAt
+    );
+
+    try {
+      await vscode.workspace.fs.rename(bundleDir, archiveDir, { overwrite: false });
+      const paths = buildSchemaBundlePaths(archiveDir);
+      await updateJsonFile<Record<string, unknown>>(paths.schema, (schema) => {
+        schema.stale = true;
+        schema.deleted = true;
+        schema.deletedAt = deletedAt;
+      });
+    } catch (err) {
+      Logger.warn(`Failed to archive deleted schema folder ${bundleDir.fsPath}`, err);
+    }
+  }
+}
+
 async function writeConnectionManifest(
   dpDir: vscode.Uri,
   connectionDir: vscode.Uri,
@@ -326,6 +413,7 @@ export async function saveSchema(introspection: SchemaIntrospection) {
   const dpDir = await ensureDPDirs();
   const connectionDir = await resolveSchemaConnectionDir(dpDir, normalized.connectionId, normalized.connectionName);
   await vscode.workspace.fs.createDirectory(connectionDir);
+  await archiveSchemaBundlesMissingFromIntrospection(dpDir, connectionDir, normalized);
 
   for (const schema of normalized.schemas) {
     const paths = buildSchemaBundlePaths(vscode.Uri.joinPath(connectionDir, sanitizeSchemaBundleName(schema.name, 'schema')));

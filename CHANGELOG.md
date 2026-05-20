@@ -142,3 +142,12 @@ Bumping the version to fix the connection with the RunQL-IDE for auto-updates.
 - Update AI schema context, ERD, description generation/import paths for schema-level bundles
 - Update generated AGENTS/README guidance and What’s New Welcome page
 - Remove MySQL/MariaDB database/schema field from connection setup as it is no longer needed
+
+## [1.9.0] - 2026-05-20
+
+### Changes
+Archive deleted schema(s) during introspection refresh
+
+- Move schema(s) missing from a successful refresh (means they were removed) into RunQL/schemas/deleted/
+- Remove the schema(s) from the active manifest and Explorer.
+- Update generated agent guidance to ignore deleted schema archives by default.

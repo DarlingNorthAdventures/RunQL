@@ -116,6 +116,7 @@ export async function listSchemaConnectionDirs(dpDir: vscode.Uri, includeDeleted
     const dirs: vscode.Uri[] = [];
     for (const [name, type] of entries) {
       if (!isDirectoryType(type)) continue;
+      if (name === 'deleted') continue;
       if (!includeDeleted && name.endsWith('_deleted')) continue;
       const candidate = vscode.Uri.joinPath(root, name);
       if (

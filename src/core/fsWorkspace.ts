@@ -113,7 +113,7 @@ This repo stores SQL, schemas, and ERD metadata in known locations. When a user 
    - Use \`RunQL/schemas/<connection>/manifest.json\` to find available schemas.
    - Read only the relevant \`RunQL/schemas/<connection>/<schema>/schema.json\` and \`description.json\`.
    - For cross-schema SQL, read only the referenced schema folders.
-   - Ignore \`*_deleted\` folders unless the user explicitly asks for archived or deleted-connection content.
+   - Ignore \`RunQL/schemas/deleted/\` and \`*_deleted\` folders unless the user explicitly asks for archived or deleted content.
 3. Only then should you create a new SQL query file (.sql)
    - Prefer to reuse or extend existing patterns when possible.
    - Put saved SQL under \`RunQL/queries/<connection>/\`, not under schema folders.

@@ -224,6 +224,50 @@ describe('schema storage', () => {
     expect(loaded[0].schemas.map(s => s.name).sort()).toEqual(['billing', 'public']);
   });
 
+  it('archives schema folders missing from a later introspection and removes them from active storage', async () => {
+    const schema = sampleSchema();
+    schema.schemas.push({
+      name: 'billing',
+      tables: [{ name: 'invoices', columns: [{ name: 'id', type: 'integer' }], primaryKey: ['id'] }],
+      views: [],
+      procedures: [],
+      functions: [],
+    });
+    await saveSchema(schema);
+
+    const nextSchema = sampleSchema();
+    nextSchema.schemas = nextSchema.schemas.filter(s => s.name === 'public');
+    await saveSchema(nextSchema);
+
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/billing')).toBe(false);
+    expect(fileExists('/workspace/RunQL/schemas/deleted/Analytics/billing/schema.json')).toBe(true);
+
+    const manifest = readJsonAt<{ schemas: Array<{ name: string; path: string }> }>('/workspace/RunQL/schemas/Analytics/manifest.json');
+    expect(manifest.schemas.map(s => s.name)).toEqual(['public']);
+
+    const archived = readJsonAt<Record<string, unknown>>('/workspace/RunQL/schemas/deleted/Analytics/billing/schema.json');
+    expect(archived.deleted).toBe(true);
+    expect(archived.stale).toBe(true);
+
+    const loaded = await loadSchemas();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].schemas.map(s => s.name)).toEqual(['public']);
+  });
+
+  it('does not archive all existing schema folders when introspection returns no schemas', async () => {
+    await saveSchema(sampleSchema());
+
+    const emptySchema = sampleSchema();
+    emptySchema.schemas = [];
+    await saveSchema(emptySchema);
+
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/public/schema.json')).toBe(true);
+    expect(fileExists('/workspace/RunQL/schemas/deleted/Analytics/public/schema.json')).toBe(false);
+
+    const manifest = readJsonAt<{ schemas: Array<{ name: string; path: string }> }>('/workspace/RunQL/schemas/Analytics/manifest.json');
+    expect(manifest.schemas.map(s => s.name)).toEqual(['public']);
+  });
+
   it('renames the bundle folder and updates internal metadata', async () => {
     await saveSchema(sampleSchema());
     writeJsonAt('/workspace/RunQL/schemas/Analytics/public/erd.layout.json', {
