@@ -60,6 +60,7 @@ export async function importSchemaDescriptionResponses(_context: vscode.Extensio
             description: paths.description.path.split('/').pop() || paths.description.fsPath,
             connectionId: schema?.connectionId,
             connectionName: schema?.connectionName,
+            schemaName: schema?.schemas?.[0]?.name,
             uri: paths.description
         };
     }));
@@ -73,7 +74,7 @@ export async function importSchemaDescriptionResponses(_context: vscode.Extensio
     if (!picked) return;
 
     const existing = picked.connectionId
-        ? await loadDescriptions(picked.connectionId, picked.connectionName)
+        ? await loadDescriptions(picked.connectionId, picked.connectionName, picked.schemaName)
         : null;
     if (!existing) {
         vscode.window.showWarningMessage(`Could not load ${picked.description}.`);
@@ -125,7 +126,7 @@ export async function importSchemaDescriptionResponses(_context: vscode.Extensio
     }
 
     existing.generatedAt = new Date().toISOString();
-    await saveDescriptions(existing.connectionId, existing.connectionName, existing);
+    await saveDescriptions(existing.connectionId, existing.connectionName, existing, existing.schemaName);
 
     vscode.window.showInformationMessage(`Imported ${merged} description(s) into ${picked.description}.`);
 

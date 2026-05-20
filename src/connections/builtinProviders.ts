@@ -98,7 +98,7 @@ export const BUILTIN_PROVIDERS: DPProviderDescriptor[] = [
             fields: [
                 { key: 'host', label: 'Host', type: 'text', tab: 'connection', storage: 'profile', required: true, defaultValue: 'localhost', width: 'half' },
                 { key: 'port', label: 'Port', type: 'number', tab: 'connection', storage: 'profile', required: true, defaultValue: 5432, width: 'half' },
-                { key: 'database', label: 'Database', type: 'text', tab: 'connection', storage: 'profile', required: true, width: 'full' },
+                { key: 'database', label: 'Database / Catalog', type: 'text', tab: 'connection', storage: 'profile', required: true, width: 'full' },
                 { key: 'ssl', label: 'Use SSL', type: 'checkbox', tab: 'connection', storage: 'profile', defaultValue: false, width: 'full' },
                 {
                     key: 'sslMode',
@@ -130,7 +130,6 @@ export const BUILTIN_PROVIDERS: DPProviderDescriptor[] = [
             fields: [
                 { key: 'host', label: 'Host', type: 'text', tab: 'connection', storage: 'profile', required: true, defaultValue: 'localhost', width: 'half' },
                 { key: 'port', label: 'Port', type: 'number', tab: 'connection', storage: 'profile', required: true, defaultValue: 3306, width: 'half' },
-                { key: 'database', label: 'Database', type: 'text', tab: 'connection', storage: 'profile', required: true, width: 'full' },
                 { key: 'ssl', label: 'Use SSL', type: 'checkbox', tab: 'connection', storage: 'profile', defaultValue: false, width: 'full' },
                 {
                     key: 'sslMode',
@@ -162,7 +161,6 @@ export const BUILTIN_PROVIDERS: DPProviderDescriptor[] = [
             fields: [
                 { key: 'host', label: 'Host', type: 'text', tab: 'connection', storage: 'profile', required: true, defaultValue: 'localhost', width: 'half' },
                 { key: 'port', label: 'Port', type: 'number', tab: 'connection', storage: 'profile', required: true, defaultValue: 3306, width: 'half' },
-                { key: 'database', label: 'Database', type: 'text', tab: 'connection', storage: 'profile', required: true, width: 'full' },
                 { key: 'ssl', label: 'Use SSL', type: 'checkbox', tab: 'connection', storage: 'profile', defaultValue: false, width: 'full' },
                 {
                     key: 'sslMode',

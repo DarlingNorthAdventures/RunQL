@@ -184,7 +184,7 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
-.cf-field label span {
+.cf-field > label:not(.cf-checkbox-label) > span {
   display: block;
   margin-bottom: 4px;
 }
@@ -256,14 +256,22 @@ button:disabled {
   align-items: center;
   gap: 8px;
   font-size: 11px;
+  line-height: 1.2;
   color: var(--ct-text);
 }
 
 .cf-checkbox-label input[type="checkbox"] {
   width: auto;
   min-height: auto;
+  margin: 0;
+  flex: 0 0 auto;
   accent-color: var(--ct-accent);
   cursor: pointer;
+}
+
+.cf-checkbox-label span {
+  display: inline;
+  margin: 0;
 }
 
 /* ── Radio field ───────────────────────────────── */

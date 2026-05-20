@@ -61,7 +61,8 @@ export function withStandardConnectionTypeSupport(descriptor: DPProviderDescript
 
     if (!fields.some((field) => field.key === 'connectionType')) {
         const databaseIndex = fields.findIndex((field) => field.key === 'database' || field.key === 'schema');
-        const insertAt = databaseIndex >= 0 ? databaseIndex : fields.length;
+        const portIndex = fields.findIndex((field) => field.key === 'port');
+        const insertAt = databaseIndex >= 0 ? databaseIndex : portIndex >= 0 ? portIndex + 1 : fields.length;
         fields.splice(insertAt, 0, STANDARD_CONNECTION_TYPE_FIELD);
     }
 

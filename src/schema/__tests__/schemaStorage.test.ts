@@ -189,20 +189,44 @@ describe('schema storage', () => {
   it('saves and loads schema bundles from per-connection folders', async () => {
     await saveSchema(sampleSchema());
 
-    expect(fileExists('/workspace/RunQL/schemas/Analytics/schema.json')).toBe(true);
-    expect(fileExists('/workspace/RunQL/schemas/Analytics/description.json')).toBe(true);
-    expect(fileExists('/workspace/RunQL/schemas/Analytics/custom.relationships.json')).toBe(true);
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/manifest.json')).toBe(true);
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/public/schema.json')).toBe(true);
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/public/description.json')).toBe(true);
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/public/custom.relationships.json')).toBe(true);
 
     const loaded = await loadSchemas();
     expect(loaded).toHaveLength(1);
     expect(loaded[0].connectionId).toBe('conn-1234');
-    expect(loaded[0].docPath).toBe('/workspace/RunQL/schemas/Analytics/description.json');
-    expect(loaded[0].customRelationshipsPath).toBe('/workspace/RunQL/schemas/Analytics/custom.relationships.json');
+    expect(loaded[0].docPath).toBe('/workspace/RunQL/schemas/Analytics/public/description.json');
+    expect(loaded[0].customRelationshipsPath).toBe('/workspace/RunQL/schemas/Analytics/public/custom.relationships.json');
+  });
+
+  it('saves multi-schema introspection into one folder per schema and rehydrates the connection', async () => {
+    const schema = sampleSchema();
+    schema.schemas.push({
+      name: 'billing',
+      tables: [{ name: 'invoices', columns: [{ name: 'id', type: 'integer' }], primaryKey: ['id'] }],
+      views: [],
+      procedures: [],
+      functions: [],
+    });
+
+    await saveSchema(schema);
+
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/public/schema.json')).toBe(true);
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/billing/schema.json')).toBe(true);
+
+    const manifest = readJsonAt<{ schemas: Array<{ name: string; path: string }> }>('/workspace/RunQL/schemas/Analytics/manifest.json');
+    expect(manifest.schemas.map(s => s.name).sort()).toEqual(['billing', 'public']);
+
+    const loaded = await loadSchemas();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].schemas.map(s => s.name).sort()).toEqual(['billing', 'public']);
   });
 
   it('renames the bundle folder and updates internal metadata', async () => {
     await saveSchema(sampleSchema());
-    writeJsonAt('/workspace/RunQL/schemas/Analytics/erd.layout.json', {
+    writeJsonAt('/workspace/RunQL/schemas/Analytics/public/erd.layout.json', {
       connectionName: 'Analytics',
       graphSignature: 'sig',
       positions: {}
@@ -211,17 +235,17 @@ describe('schema storage', () => {
     await renameSchemaFiles('conn-1234', 'Analytics', 'Analytics Prod');
 
     expect(fileExists('/workspace/RunQL/schemas/Analytics')).toBe(false);
-    expect(fileExists('/workspace/RunQL/schemas/Analytics_Prod/schema.json')).toBe(true);
+    expect(fileExists('/workspace/RunQL/schemas/Analytics_Prod/public/schema.json')).toBe(true);
 
-    const schema = readJsonAt<SchemaIntrospection>('/workspace/RunQL/schemas/Analytics_Prod/schema.json');
+    const schema = readJsonAt<SchemaIntrospection>('/workspace/RunQL/schemas/Analytics_Prod/public/schema.json');
     expect(schema.connectionName).toBe('Analytics Prod');
-    expect(schema.docPath).toBe('/workspace/RunQL/schemas/Analytics_Prod/description.json');
-    expect(schema.customRelationshipsPath).toBe('/workspace/RunQL/schemas/Analytics_Prod/custom.relationships.json');
+    expect(schema.docPath).toBe('/workspace/RunQL/schemas/Analytics_Prod/public/description.json');
+    expect(schema.customRelationshipsPath).toBe('/workspace/RunQL/schemas/Analytics_Prod/public/custom.relationships.json');
 
-    const description = readJsonAt<{ connectionName: string }>('/workspace/RunQL/schemas/Analytics_Prod/description.json');
+    const description = readJsonAt<{ connectionName: string }>('/workspace/RunQL/schemas/Analytics_Prod/public/description.json');
     expect(description.connectionName).toBe('Analytics Prod');
 
-    const layout = readJsonAt<{ connectionName: string }>('/workspace/RunQL/schemas/Analytics_Prod/erd.layout.json');
+    const layout = readJsonAt<{ connectionName: string }>('/workspace/RunQL/schemas/Analytics_Prod/public/erd.layout.json');
     expect(layout.connectionName).toBe('Analytics Prod');
   });
 
@@ -261,7 +285,7 @@ describe('schema storage', () => {
 
     await runSchemaBundleMigrationIfNeeded();
 
-    const bundlePaths = await resolveSchemaBundlePaths(vscode.Uri.file('/workspace/RunQL'), 'conn-1234', 'Legacy');
+    const bundlePaths = await resolveSchemaBundlePaths(vscode.Uri.file('/workspace/RunQL'), 'conn-1234', 'Legacy', 'public');
     expect(fileExists(bundlePaths.schema.fsPath)).toBe(true);
     expect(fileExists(bundlePaths.description.fsPath)).toBe(true);
     expect(fileExists(bundlePaths.customRelationships.fsPath)).toBe(true);
@@ -271,21 +295,21 @@ describe('schema storage', () => {
     expect(fileExists('/workspace/RunQL/schemas/Legacy.json')).toBe(false);
     expect(fileExists('/workspace/RunQL/system/erd/Legacy.erd.json')).toBe(false);
     expect(fileExists('/workspace/RunQL/system/erd')).toBe(false);
-    expect(fileExists('/workspace/RunQL/system/migration_backup/schemas/Legacy.json')).toBe(true);
-    expect(fileExists('/workspace/RunQL/system/migration_backup/erd/Legacy.erd.json')).toBe(true);
+    expect(Array.from(fsMap.keys()).some(path => path.includes('/workspace/RunQL/system/migration_backup/schema-bundles-v2/') && path.endsWith('-Legacy.json'))).toBe(true);
+    expect(Array.from(fsMap.keys()).some(path => path.includes('/workspace/RunQL/system/migration_backup/erd/') && path.endsWith('-Legacy.erd.json'))).toBe(true);
 
-    const state = readJsonAt<{ status: string; migratedBundles: number }>('/workspace/RunQL/system/migrations/schema-bundles-v1.json');
+    const state = readJsonAt<{ status: string; migratedBundles: number }>('/workspace/RunQL/system/migrations/schema-bundles-v2.json');
     expect(state.status).toBe('complete');
     expect(state.migratedBundles).toBe(1);
 
-    const manifest = readJsonAt<{ entries: Array<{ source: string; backup: string }> }>('/workspace/RunQL/system/migration_backup/manifest.json');
+    const manifest = readJsonAt<{ entries: Array<{ source: string; backup: string }> }>('/workspace/RunQL/system/migration_backup/schema-bundles-v2/manifest.json');
     expect(manifest.entries.some((entry) => entry.source.endsWith('/Legacy.json'))).toBe(true);
-    expect(manifest.entries.some((entry) => entry.backup.endsWith('/migration_backup/erd/Legacy.erd.json'))).toBe(true);
+    expect(manifest.entries.some((entry) => entry.backup.includes('/migration_backup/erd/') && entry.backup.endsWith('-Legacy.erd.json'))).toBe(true);
   });
 
   it('renames existing bundle layout.json to erd.layout.json during startup normalization', async () => {
     await saveSchema(sampleSchema());
-    writeJsonAt('/workspace/RunQL/schemas/Analytics/layout.json', {
+    writeJsonAt('/workspace/RunQL/schemas/Analytics/public/layout.json', {
       connectionName: 'Analytics',
       graphSignature: 'sig',
       positions: {}
@@ -293,7 +317,7 @@ describe('schema storage', () => {
 
     await runSchemaBundleMigrationIfNeeded();
 
-    expect(fileExists('/workspace/RunQL/schemas/Analytics/layout.json')).toBe(false);
-    expect(fileExists('/workspace/RunQL/schemas/Analytics/erd.layout.json')).toBe(true);
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/public/layout.json')).toBe(false);
+    expect(fileExists('/workspace/RunQL/schemas/Analytics/public/erd.layout.json')).toBe(true);
   });
 });

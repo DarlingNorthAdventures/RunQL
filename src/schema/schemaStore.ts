@@ -12,9 +12,12 @@ import { ensureDPDirs, readJson, writeJson, fileExists } from '../core/fsWorkspa
 import { SchemaDescriptionsFile } from './descriptionStore';
 import { Logger } from '../core/logger';
 import {
+  SchemaConnectionManifest,
   buildSchemaBundlePaths,
-  listSchemaBundleDirs,
-  resolveSchemaBundleDir,
+  buildConnectionSchemaPaths,
+  listSchemaBundleDirsInConnection,
+  listSchemaConnectionDirs,
+  resolveSchemaConnectionDir,
   resolveSchemaBundlePaths,
   sanitizeSchemaBundleName,
 } from './schemaPaths';
@@ -96,7 +99,7 @@ export function bumpSchemaVersion(): void {
   schemaVersion++;
 }
 
-function buildDefaultDescription(normalized: SchemaIntrospection): SchemaDescriptionsFile {
+function buildDefaultDescription(normalized: SchemaIntrospection, schemaName?: string): SchemaDescriptionsFile {
   return {
     __runqlHeader: "#RunQL created",
     version: "0.1",
@@ -104,7 +107,7 @@ function buildDefaultDescription(normalized: SchemaIntrospection): SchemaDescrip
     connectionId: normalized.connectionId,
     connectionName: normalized.connectionName,
     dialect: normalized.dialect,
-    schemaName: normalized.schemas?.[0]?.name || 'main',
+    schemaName: schemaName || normalized.schemas?.[0]?.name || 'main',
     tables: {},
     columns: {}
   };
@@ -119,7 +122,11 @@ function buildDefaultCustomRelationships(normalized: SchemaIntrospection): Custo
   };
 }
 
-function buildOrderedIntrospection(normalized: SchemaIntrospection, paths: ReturnType<typeof buildSchemaBundlePaths>): SchemaIntrospection {
+function buildOrderedIntrospection(
+  normalized: SchemaIntrospection,
+  schema: SchemaModel,
+  paths: ReturnType<typeof buildSchemaBundlePaths>
+): SchemaIntrospection {
   return {
     version: "0.2",
     generatedAt: normalized.generatedAt,
@@ -128,15 +135,19 @@ function buildOrderedIntrospection(normalized: SchemaIntrospection, paths: Retur
     dialect: normalized.dialect,
     docPath: paths.description.fsPath,
     customRelationshipsPath: paths.customRelationships.fsPath,
-    schemas: normalized.schemas
+    schemas: [schema]
   };
 }
 
-async function ensureBundleFiles(paths: ReturnType<typeof buildSchemaBundlePaths>, normalized: SchemaIntrospection): Promise<void> {
+async function ensureBundleFiles(
+  paths: ReturnType<typeof buildSchemaBundlePaths>,
+  normalized: SchemaIntrospection,
+  schemaName?: string
+): Promise<void> {
   await vscode.workspace.fs.createDirectory(paths.bundleDir);
 
   if (!await fileExists(paths.description)) {
-    await writeJson(paths.description, buildDefaultDescription(normalized));
+    await writeJson(paths.description, buildDefaultDescription(normalized, schemaName));
   }
 
   if (!await fileExists(paths.customRelationships)) {
@@ -179,7 +190,7 @@ async function resolveRenameTargetBundleDir(
   }
 
   try {
-    const existing = await readJson<SchemaIntrospection>(vscode.Uri.joinPath(preferredDir, 'schema.json'));
+    const existing = await readJson<SchemaConnectionManifest>(vscode.Uri.joinPath(preferredDir, 'manifest.json'));
     if (existing?.connectionId === connectionId) {
       return preferredDir;
     }
@@ -190,35 +201,119 @@ async function resolveRenameTargetBundleDir(
   return vscode.Uri.joinPath(root, `${preferredName}--${connectionId.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'bundle'}`);
 }
 
-export async function loadSchemas(): Promise<SchemaIntrospection[]> {
-  const dpDir = await ensureDPDirs();
-  const bundleDirs = await listSchemaBundleDirs(dpDir);
-  const allSchemas: SchemaIntrospection[] = [];
+async function loadSchemaBundle(bundleDir: vscode.Uri): Promise<SchemaIntrospection | undefined> {
+  const schemaUri = vscode.Uri.joinPath(bundleDir, 'schema.json');
+  try {
+    const raw = await readJson<Record<string, unknown>>(schemaUri);
+    const normalized = normalizeSchemaIntrospection(raw);
+    if (!normalized) return undefined;
+    normalized.docPath = vscode.Uri.joinPath(bundleDir, 'description.json').fsPath;
+    normalized.customRelationshipsPath = vscode.Uri.joinPath(bundleDir, 'custom.relationships.json').fsPath;
+    return normalized;
+  } catch (err) {
+    Logger.warn(`Failed to parse schema bundle ${bundleDir.fsPath}`, err);
+    return undefined;
+  }
+}
+
+function mergeSchemaIntrospection(
+  target: SchemaIntrospection | undefined,
+  next: SchemaIntrospection
+): SchemaIntrospection {
+  if (!target) {
+    return {
+      ...next,
+      schemas: [...next.schemas],
+    };
+  }
+
+  const existingSchemaNames = new Set(target.schemas.map(s => s.name));
+  for (const schema of next.schemas) {
+    if (!existingSchemaNames.has(schema.name)) {
+      target.schemas.push(schema);
+      existingSchemaNames.add(schema.name);
+    } else {
+      const idx = target.schemas.findIndex(s => s.name === schema.name);
+      target.schemas[idx] = schema;
+    }
+  }
+
+  if (next.generatedAt > target.generatedAt) {
+    target.generatedAt = next.generatedAt;
+  }
+  target.connectionName = next.connectionName ?? target.connectionName;
+  target.dialect = next.dialect || target.dialect;
+  target.docPath = target.docPath ?? next.docPath;
+  target.customRelationshipsPath = target.customRelationshipsPath ?? next.customRelationshipsPath;
+  return target;
+}
+
+function workspaceRelative(uri: vscode.Uri): string {
+  if (typeof vscode.workspace.asRelativePath === 'function') {
+    return vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
+  }
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return root ? uri.fsPath.replace(`${root}/`, '').replace(/\\/g, '/') : uri.fsPath;
+}
+
+async function writeConnectionManifest(
+  dpDir: vscode.Uri,
+  connectionDir: vscode.Uri,
+  connectionId: string,
+  connectionName: string | undefined,
+  dialect: SchemaIntrospection['dialect']
+): Promise<void> {
+  const bundleDirs = await listSchemaBundleDirsInConnection(connectionDir);
+  const schemas: SchemaConnectionManifest['schemas'] = [];
 
   for (const bundleDir of bundleDirs) {
-    const schemaUri = vscode.Uri.joinPath(bundleDir, 'schema.json');
-    try {
-      const raw = await readJson<Record<string, unknown>>(schemaUri);
-      const normalized = normalizeSchemaIntrospection(raw);
-      if (normalized) {
-        normalized.docPath = vscode.Uri.joinPath(bundleDir, 'description.json').fsPath;
-        normalized.customRelationshipsPath = vscode.Uri.joinPath(bundleDir, 'custom.relationships.json').fsPath;
-        allSchemas.push(normalized);
-      }
-    } catch (err) {
-      Logger.warn(`Failed to parse schema bundle ${bundleDir.fsPath}`, err);
-    }
+    const loaded = await loadSchemaBundle(bundleDir);
+    const schema = loaded?.schemas?.[0];
+    if (!loaded || !schema) continue;
+    const paths = buildSchemaBundlePaths(bundleDir);
+    schemas.push({
+      name: schema.name,
+      path: workspaceRelative(paths.schema),
+      descriptionPath: workspaceRelative(paths.description),
+      customRelationshipsPath: workspaceRelative(paths.customRelationships),
+      erdPath: workspaceRelative(paths.erd),
+      erdLayoutPath: workspaceRelative(paths.layout),
+      generatedAt: loaded.generatedAt,
+    });
   }
 
+  schemas.sort((a, b) => a.name.localeCompare(b.name));
+  const manifest: SchemaConnectionManifest = {
+    version: '0.1',
+    connectionId,
+    connectionName,
+    dialect,
+    generatedAt: new Date().toISOString(),
+    schemas,
+  };
+  await vscode.workspace.fs.createDirectory(connectionDir);
+  await writeJson(buildConnectionSchemaPaths(connectionDir).manifest, manifest);
+}
+
+export async function loadSchemas(): Promise<SchemaIntrospection[]> {
+  const dpDir = await ensureDPDirs();
+  const connectionDirs = await listSchemaConnectionDirs(dpDir);
   const schemaMap = new Map<string, SchemaIntrospection>();
-  for (const schema of allSchemas) {
-    const existing = schemaMap.get(schema.connectionId);
-    if (!existing || (schema.schemas?.length ?? 0) > (existing.schemas?.length ?? 0)) {
-      schemaMap.set(schema.connectionId, schema);
+
+  for (const connectionDir of connectionDirs) {
+    const bundleDirs = await listSchemaBundleDirsInConnection(connectionDir);
+    for (const bundleDir of bundleDirs) {
+      const normalized = await loadSchemaBundle(bundleDir);
+      if (!normalized) continue;
+      const existing = schemaMap.get(normalized.connectionId);
+      schemaMap.set(normalized.connectionId, mergeSchemaIntrospection(existing, normalized));
     }
   }
 
-  return Array.from(schemaMap.values());
+  return Array.from(schemaMap.values()).map(schema => ({
+    ...schema,
+    schemas: [...schema.schemas].sort((a, b) => a.name.localeCompare(b.name)),
+  }));
 }
 
 export async function saveSchema(introspection: SchemaIntrospection) {
@@ -229,15 +324,22 @@ export async function saveSchema(introspection: SchemaIntrospection) {
   }
 
   const dpDir = await ensureDPDirs();
-  const paths = await resolveSchemaBundlePaths(dpDir, normalized.connectionId, normalized.connectionName);
-  await ensureBundleFiles(paths, normalized);
-  await writeJson(paths.schema, buildOrderedIntrospection(normalized, paths));
+  const connectionDir = await resolveSchemaConnectionDir(dpDir, normalized.connectionId, normalized.connectionName);
+  await vscode.workspace.fs.createDirectory(connectionDir);
+
+  for (const schema of normalized.schemas) {
+    const paths = buildSchemaBundlePaths(vscode.Uri.joinPath(connectionDir, sanitizeSchemaBundleName(schema.name, 'schema')));
+    await ensureBundleFiles(paths, normalized, schema.name);
+    await writeJson(paths.schema, buildOrderedIntrospection(normalized, schema, paths));
+  }
+
+  await writeConnectionManifest(dpDir, connectionDir, normalized.connectionId, normalized.connectionName, normalized.dialect);
 }
 
 export async function deleteSchema(connectionId: string, connectionName?: string) {
   bumpSchemaVersion();
   const dpDir = await ensureDPDirs();
-  const bundleDir = await resolveSchemaBundleDir(dpDir, connectionId, connectionName);
+  const bundleDir = await resolveSchemaConnectionDir(dpDir, connectionId, connectionName);
   try {
     if (await fileExists(bundleDir)) {
       await vscode.workspace.fs.delete(bundleDir, { recursive: true, useTrash: false });
@@ -250,7 +352,7 @@ export async function deleteSchema(connectionId: string, connectionName?: string
 export async function renameSchemaFiles(connectionId: string, oldName: string, newName: string) {
   bumpSchemaVersion();
   const dpDir = await ensureDPDirs();
-  const currentBundleDir = await resolveSchemaBundleDir(dpDir, connectionId, oldName);
+  const currentBundleDir = await resolveSchemaConnectionDir(dpDir, connectionId, oldName);
   if (!await fileExists(currentBundleDir)) return;
 
   const targetBundleDir = await resolveRenameTargetBundleDir(dpDir, connectionId, currentBundleDir, newName);
@@ -263,20 +365,67 @@ export async function renameSchemaFiles(connectionId: string, oldName: string, n
     }
   }
 
-  const paths = buildSchemaBundlePaths(targetBundleDir);
-  await updateJsonFile<SchemaIntrospection>(paths.schema, (schema) => {
-    schema.connectionName = newName;
-    schema.docPath = paths.description.fsPath;
-    schema.customRelationshipsPath = paths.customRelationships.fsPath;
-  });
-  await updateJsonFile<SchemaDescriptionsFile>(paths.description, (description) => {
-    description.connectionName = newName;
-  });
-  await updateJsonFile<CustomRelationshipsFile>(paths.customRelationships, (customRelationships) => {
-    customRelationships.connectionName = newName;
-  });
-  await updateJsonFile<Record<string, unknown>>(paths.layout, (layout) => {
-    layout.connectionName = newName;
+  const bundleDirs = await listSchemaBundleDirsInConnection(targetBundleDir);
+  let dialect: SchemaIntrospection['dialect'] = '';
+  for (const bundleDir of bundleDirs) {
+    const paths = buildSchemaBundlePaths(bundleDir);
+    await updateJsonFile<SchemaIntrospection>(paths.schema, (schema) => {
+      schema.connectionName = newName;
+      schema.docPath = paths.description.fsPath;
+      schema.customRelationshipsPath = paths.customRelationships.fsPath;
+      dialect = schema.dialect || dialect;
+    });
+    await updateJsonFile<SchemaDescriptionsFile>(paths.description, (description) => {
+      description.connectionName = newName;
+    });
+    await updateJsonFile<CustomRelationshipsFile>(paths.customRelationships, (customRelationships) => {
+      customRelationships.connectionName = newName;
+    });
+    await updateJsonFile<Record<string, unknown>>(paths.layout, (layout) => {
+      layout.connectionName = newName;
+    });
+  }
+  await writeConnectionManifest(dpDir, targetBundleDir, connectionId, newName, dialect);
+}
+
+export async function archiveSchemaFilesForDeletedConnection(connectionId: string, connectionName?: string): Promise<void> {
+  bumpSchemaVersion();
+  const dpDir = await ensureDPDirs();
+  const currentDir = await resolveSchemaConnectionDir(dpDir, connectionId, connectionName);
+  if (!await fileExists(currentDir)) return;
+
+  const deletedAt = new Date().toISOString();
+  const targetBaseName = `${sanitizeSchemaBundleName(connectionName, connectionId)}_deleted`;
+  let targetDir = vscode.Uri.joinPath(vscode.Uri.joinPath(dpDir, 'schemas'), targetBaseName);
+  if (await fileExists(targetDir)) {
+    targetDir = vscode.Uri.joinPath(vscode.Uri.joinPath(dpDir, 'schemas'), `${targetBaseName}--${connectionId.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'bundle'}`);
+  }
+
+  try {
+    await vscode.workspace.fs.rename(currentDir, targetDir, { overwrite: false });
+  } catch (err) {
+    Logger.warn(`Failed to archive schema folder ${currentDir.fsPath}`, err);
+    return;
+  }
+
+  const bundleDirs = await listSchemaBundleDirsInConnection(targetDir);
+  let dialect: SchemaIntrospection['dialect'] = '';
+  for (const bundleDir of bundleDirs) {
+    const paths = buildSchemaBundlePaths(bundleDir);
+    await updateJsonFile<Record<string, unknown>>(paths.schema, (schema) => {
+      schema.stale = true;
+      schema.deleted = true;
+      schema.deletedAt = deletedAt;
+      dialect = String(schema.dialect ?? dialect) as SchemaIntrospection['dialect'];
+    });
+  }
+
+  const manifestUri = buildConnectionSchemaPaths(targetDir).manifest;
+  await updateJsonFile<SchemaConnectionManifest>(manifestUri, (manifest) => {
+    manifest.stale = true;
+    manifest.deleted = true;
+    manifest.deletedAt = deletedAt;
+    manifest.originalConnectionName = connectionName;
   });
 }
 
@@ -295,10 +444,11 @@ export async function loadCustomRelationships(customRelationshipsPath: string): 
 export async function saveCustomRelationships(
   connectionId: string,
   connectionName: string,
-  relationships: CustomRelationship[]
+  relationships: CustomRelationship[],
+  schemaName = 'main'
 ) {
   const dpDir = await ensureDPDirs();
-  const paths = await resolveSchemaBundlePaths(dpDir, connectionId, connectionName);
+  const paths = await resolveSchemaBundlePaths(dpDir, connectionId, connectionName, schemaName);
   await vscode.workspace.fs.createDirectory(paths.bundleDir);
 
   const file: CustomRelationshipsFile = {

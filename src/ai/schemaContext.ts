@@ -3,6 +3,7 @@ import { loadSchemas } from "../schema/schemaStore";
 import { extractTables } from "../util/sqlParseHeuristics";
 import { ensureDPDirs, fileExists, readJson } from "../core/fsWorkspace";
 import { loadDescriptions } from "../schema/descriptionStore";
+import { resolveSchemaBundlePaths } from "../schema/schemaPaths";
 import { Logger } from "../core/logger";
 
 /** A single table entry in the schema context sent to AI */
@@ -37,7 +38,7 @@ export async function buildSchemaContext(sqlText: string, connectionId?: string)
 
     const context: SchemaContextData = { tables: [], meta: [], relationships: [] };
 
-    const descriptions = await loadDescriptions(introspection.connectionId, introspection.connectionName);
+    const descriptionsBySchema = new Map<string, Awaited<ReturnType<typeof loadDescriptions>>>();
 
     for (const ref of referenced) {
         const [schemaName, tableName] = ref.split('.');
@@ -45,6 +46,10 @@ export async function buildSchemaContext(sqlText: string, connectionId?: string)
         const table = schema?.tables.find(t => t.name === tableName)
             || (schema?.views || []).find(v => v.name === tableName);
         if (table) {
+            if (!descriptionsBySchema.has(schemaName)) {
+                descriptionsBySchema.set(schemaName, await loadDescriptions(introspection.connectionId, introspection.connectionName, schemaName));
+            }
+            const descriptions = descriptionsBySchema.get(schemaName);
             const tableKey = `${schemaName}.${tableName}`;
             const tDesc = descriptions?.tables?.[tableKey]?.description;
 
@@ -65,24 +70,22 @@ export async function buildSchemaContext(sqlText: string, connectionId?: string)
     }
 
     const dpDir = await ensureDPDirs();
-    for (const ref of referenced) {
-        const schemaName = ref.split('.')[0];
-        const metaUri = vscode.Uri.joinPath(dpDir, 'schemas', `${schemaName}Meta.json`);
-        const relUri = vscode.Uri.joinPath(dpDir, 'schemas', `${schemaName}Relationships.json`);
-        if (await fileExists(metaUri)) {
+    const referencedSchemas = Array.from(new Set(referenced.map(ref => ref.split('.')[0]).filter(Boolean)));
+    for (const schemaName of referencedSchemas) {
+        const paths = await resolveSchemaBundlePaths(dpDir, introspection.connectionId, introspection.connectionName, schemaName);
+        if (await fileExists(paths.schema)) {
             try {
-                context.meta.push(await readJson(metaUri));
+                context.meta.push(await readJson(paths.schema));
             } catch (e) {
-                // Failed to parse meta JSON - file may be corrupted, continue without it
-                Logger.warn(`Failed to load metadata from ${metaUri.fsPath}`, e);
+                Logger.warn(`Failed to load schema metadata from ${paths.schema.fsPath}`, e);
             }
         }
-        if (await fileExists(relUri)) {
+        if (await fileExists(paths.customRelationships)) {
             try {
-                context.relationships.push(await readJson(relUri));
+                context.relationships.push(await readJson(paths.customRelationships));
             } catch (e) {
                 // Failed to parse relationships JSON - file may be corrupted, continue without it
-                Logger.warn(`Failed to load relationships from ${relUri.fsPath}`, e);
+                Logger.warn(`Failed to load relationships from ${paths.customRelationships.fsPath}`, e);
             }
         }
     }

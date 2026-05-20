@@ -5,6 +5,7 @@ import { SchemaIntrospection } from '../core/types';
 import {
   LEGACY_SCHEMA_BUNDLE_LAYOUT_FILE,
   buildSchemaBundlePaths,
+  buildConnectionSchemaPaths,
   getMigrationBackupRoot,
   getMigrationBackupErdRoot,
   getMigrationBackupManifestUri,
@@ -12,10 +13,14 @@ import {
   getSchemaMigrationsRoot,
   getSchemaBundleMigrationStateUri,
   getSchemasRoot,
-  listSchemaBundleDirs,
+  listSchemaBundleDirsInConnection,
+  listSchemaConnectionDirs,
+  resolveSchemaConnectionDir,
   resolveSchemaBundlePaths,
+  sanitizeSchemaBundleName,
 } from './schemaPaths';
 import { saveSchema } from './schemaStore';
+import { SchemaDescriptionsFile } from './descriptionStore';
 
 interface MigrationState {
   version: '1';
@@ -52,6 +57,19 @@ interface LegacyBundleFiles {
   layout: vscode.Uri;
 }
 
+interface ConnectionLevelBundleFiles {
+  connectionDir: vscode.Uri;
+  schema: vscode.Uri;
+  description: vscode.Uri;
+  customRelationships: vscode.Uri;
+  erd: vscode.Uri;
+  layout: vscode.Uri;
+}
+
+function isDirectoryType(type: vscode.FileType | number): boolean {
+  return type === 2 || (Boolean(vscode.FileType) && type === vscode.FileType.Directory);
+}
+
 async function removeLegacyErdDirIfEmpty(dpDir: vscode.Uri): Promise<void> {
   const legacyErdRoot = vscode.Uri.joinPath(dpDir, 'system', 'erd');
   try {
@@ -64,18 +82,20 @@ async function removeLegacyErdDirIfEmpty(dpDir: vscode.Uri): Promise<void> {
   }
 }
 
-async function normalizeBundleLayoutFilenames(dpDir: vscode.Uri): Promise<void> {
-  const bundleDirs = await listSchemaBundleDirs(dpDir);
-  for (const bundleDir of bundleDirs) {
-    const legacyLayoutUri = vscode.Uri.joinPath(bundleDir, LEGACY_SCHEMA_BUNDLE_LAYOUT_FILE);
-    const newLayoutUri = buildSchemaBundlePaths(bundleDir).layout;
-
-    try {
-      if (await fileExists(legacyLayoutUri) && !await fileExists(newLayoutUri)) {
-        await vscode.workspace.fs.rename(legacyLayoutUri, newLayoutUri, { overwrite: false });
+async function normalizeSchemaLevelLayoutFilenames(dpDir: vscode.Uri): Promise<void> {
+  const connectionDirs = await listSchemaConnectionDirs(dpDir, true);
+  for (const connectionDir of connectionDirs) {
+    const bundleDirs = await listSchemaBundleDirsInConnection(connectionDir);
+    for (const bundleDir of bundleDirs) {
+      const legacyLayoutUri = vscode.Uri.joinPath(bundleDir, LEGACY_SCHEMA_BUNDLE_LAYOUT_FILE);
+      const newLayoutUri = buildSchemaBundlePaths(bundleDir).layout;
+      try {
+        if (await fileExists(legacyLayoutUri) && !await fileExists(newLayoutUri)) {
+          await vscode.workspace.fs.rename(legacyLayoutUri, newLayoutUri, { overwrite: false });
+        }
+      } catch (err) {
+        Logger.warn(`Failed to normalize ERD layout filename in ${bundleDir.fsPath}`, err);
       }
-    } catch (err) {
-      Logger.warn(`Failed to normalize ERD layout filename in ${bundleDir.fsPath}`, err);
     }
   }
 }
@@ -117,6 +137,12 @@ async function hasLegacySchemaStorage(dpDir: vscode.Uri): Promise<boolean> {
     if (entries.some(([name]) => name.endsWith('.json'))) {
       return true;
     }
+    for (const [name, type] of entries) {
+      if (!isDirectoryType(type)) continue;
+      if (await fileExists(vscode.Uri.joinPath(schemasRoot, name, 'schema.json'))) {
+        return true;
+      }
+    }
   } catch {
     // Ignore absent schema directory.
   }
@@ -130,6 +156,31 @@ async function hasLegacySchemaStorage(dpDir: vscode.Uri): Promise<boolean> {
   }
 }
 
+async function listConnectionLevelLegacyBundles(dpDir: vscode.Uri): Promise<ConnectionLevelBundleFiles[]> {
+  const schemasRoot = getSchemasRoot(dpDir);
+  try {
+    const entries = await vscode.workspace.fs.readDirectory(schemasRoot);
+    const bundles: ConnectionLevelBundleFiles[] = [];
+    for (const [name, type] of entries) {
+      if (!isDirectoryType(type)) continue;
+      const connectionDir = vscode.Uri.joinPath(schemasRoot, name);
+      const schema = vscode.Uri.joinPath(connectionDir, 'schema.json');
+      if (!await fileExists(schema)) continue;
+      bundles.push({
+        connectionDir,
+        schema,
+        description: vscode.Uri.joinPath(connectionDir, 'description.json'),
+        customRelationships: vscode.Uri.joinPath(connectionDir, 'custom.relationships.json'),
+        erd: vscode.Uri.joinPath(connectionDir, 'erd.json'),
+        layout: vscode.Uri.joinPath(connectionDir, 'erd.layout.json'),
+      });
+    }
+    return bundles;
+  } catch {
+    return [];
+  }
+}
+
 async function copyFileIfPresent(source: vscode.Uri, destination: vscode.Uri): Promise<boolean> {
   if (!await fileExists(source)) return false;
   const bytes = await vscode.workspace.fs.readFile(source);
@@ -140,7 +191,7 @@ async function copyFileIfPresent(source: vscode.Uri, destination: vscode.Uri): P
 async function moveToBackup(source: vscode.Uri, backupRoot: vscode.Uri): Promise<vscode.Uri | undefined> {
   if (!await fileExists(source)) return undefined;
   await vscode.workspace.fs.createDirectory(backupRoot);
-  const backupUri = vscode.Uri.joinPath(backupRoot, source.path.split('/').pop() || source.fsPath);
+  const backupUri = vscode.Uri.joinPath(backupRoot, `${Date.now()}-${source.path.split('/').pop() || source.fsPath}`);
   await vscode.workspace.fs.rename(source, backupUri, { overwrite: true });
   return backupUri;
 }
@@ -161,6 +212,80 @@ async function appendManifestEntry(
     backup: backup.fsPath,
     status,
   });
+}
+
+function splitDescriptionForSchema(
+  description: SchemaDescriptionsFile | undefined,
+  schemaName: string,
+  legacySchema: SchemaIntrospection
+): SchemaDescriptionsFile | undefined {
+  if (!description) return undefined;
+  const prefix = `${schemaName}.`;
+  const tables: SchemaDescriptionsFile['tables'] = {};
+  const columns: SchemaDescriptionsFile['columns'] = {};
+
+  for (const [key, value] of Object.entries(description.tables || {})) {
+    if (key.startsWith(prefix)) tables[key] = value;
+  }
+  for (const [key, value] of Object.entries(description.columns || {})) {
+    if (key.startsWith(prefix)) columns[key] = value;
+  }
+
+  return {
+    ...description,
+    generatedAt: new Date().toISOString(),
+    connectionId: legacySchema.connectionId,
+    connectionName: legacySchema.connectionName,
+    dialect: legacySchema.dialect,
+    schemaName,
+    tables,
+    columns,
+  };
+}
+
+async function readOptionalJson<T>(uri: vscode.Uri): Promise<T | undefined> {
+  try {
+    if (!await fileExists(uri)) return undefined;
+    return await readJson<T>(uri);
+  } catch (err) {
+    Logger.warn(`Failed to parse optional migration file ${uri.fsPath}`, err);
+    return undefined;
+  }
+}
+
+async function copySchemaSidecars(
+  dpDir: vscode.Uri,
+  legacySchema: SchemaIntrospection,
+  descriptionUri: vscode.Uri,
+  customRelationshipsUri: vscode.Uri,
+  erdUri: vscode.Uri,
+  layoutUri: vscode.Uri,
+  manifest: MigrationManifest
+): Promise<void> {
+  const description = await readOptionalJson<SchemaDescriptionsFile>(descriptionUri);
+  const schemas = legacySchema.schemas || [];
+
+  for (let idx = 0; idx < schemas.length; idx++) {
+    const schema = schemas[idx];
+    const paths = await resolveSchemaBundlePaths(dpDir, legacySchema.connectionId, legacySchema.connectionName, schema.name);
+    const splitDescription = splitDescriptionForSchema(description, schema.name, legacySchema);
+    if (splitDescription) {
+      await writeJson(paths.description, splitDescription);
+    }
+
+    if (schemas.length === 1) {
+      await copyFileIfPresent(customRelationshipsUri, paths.customRelationships);
+      await copyFileIfPresent(erdUri, paths.erd);
+      await copyFileIfPresent(layoutUri, paths.layout);
+    } else if (idx === 0) {
+      if (await fileExists(customRelationshipsUri)) {
+        await copyFileIfPresent(customRelationshipsUri, paths.customRelationships);
+      }
+      if (await fileExists(erdUri) || await fileExists(layoutUri)) {
+        manifest.warnings.push(`Skipped ambiguous ERD migration for multi-schema bundle ${legacySchema.connectionName ?? legacySchema.connectionId}.`);
+      }
+    }
+  }
 }
 
 async function migrateLegacyBundle(dpDir: vscode.Uri, files: LegacyBundleFiles, manifest: MigrationManifest): Promise<boolean> {
@@ -184,31 +309,62 @@ async function migrateLegacyBundle(dpDir: vscode.Uri, files: LegacyBundleFiles, 
   }
 
   await saveSchema(legacySchema);
-  const paths = await resolveSchemaBundlePaths(dpDir, legacySchema.connectionId, legacySchema.connectionName);
-  await vscode.workspace.fs.createDirectory(paths.bundleDir);
-
-  await copyFileIfPresent(files.description, paths.description);
-  await copyFileIfPresent(files.customRelationships, paths.customRelationships);
-  await copyFileIfPresent(files.erd, paths.erd);
-  await copyFileIfPresent(files.layout, paths.layout);
-
+  await copySchemaSidecars(dpDir, legacySchema, files.description, files.customRelationships, files.erd, files.layout, manifest);
   await saveSchema(legacySchema);
 
+  const connectionDir = await resolveSchemaConnectionDir(dpDir, legacySchema.connectionId, legacySchema.connectionName);
+
   const schemaBackup = await moveToBackup(files.schema, getMigrationBackupSchemasRoot(dpDir));
-  await appendManifestEntry(manifest, 'schema', files.schema, schemaBackup, paths.schema);
+  await appendManifestEntry(manifest, 'schema', files.schema, schemaBackup, buildConnectionSchemaPaths(connectionDir).manifest);
 
   const descriptionBackup = await moveToBackup(files.description, getMigrationBackupSchemasRoot(dpDir));
-  await appendManifestEntry(manifest, 'description', files.description, descriptionBackup, paths.description);
+  await appendManifestEntry(manifest, 'description', files.description, descriptionBackup, connectionDir);
 
   const customRelationshipsBackup = await moveToBackup(files.customRelationships, getMigrationBackupSchemasRoot(dpDir));
-  await appendManifestEntry(manifest, 'custom.relationships', files.customRelationships, customRelationshipsBackup, paths.customRelationships);
+  await appendManifestEntry(manifest, 'custom.relationships', files.customRelationships, customRelationshipsBackup, connectionDir);
 
   const erdBackup = await moveToBackup(files.erd, getMigrationBackupErdRoot(dpDir));
-  await appendManifestEntry(manifest, 'erd', files.erd, erdBackup, paths.erd);
+  await appendManifestEntry(manifest, 'erd', files.erd, erdBackup, connectionDir);
 
   const layoutBackup = await moveToBackup(files.layout, getMigrationBackupErdRoot(dpDir));
-  await appendManifestEntry(manifest, 'layout', files.layout, layoutBackup, paths.layout);
+  await appendManifestEntry(manifest, 'layout', files.layout, layoutBackup, connectionDir);
 
+  return true;
+}
+
+async function migrateConnectionLevelBundle(dpDir: vscode.Uri, files: ConnectionLevelBundleFiles, manifest: MigrationManifest): Promise<boolean> {
+  let legacySchema: SchemaIntrospection;
+  try {
+    legacySchema = await readJson<SchemaIntrospection>(files.schema);
+  } catch (err) {
+    manifest.warnings.push(`Failed to parse connection-level schema ${files.schema.fsPath}: ${String(err)}`);
+    return false;
+  }
+
+  if (!legacySchema?.connectionId) {
+    manifest.warnings.push(`Skipping connection-level schema without connectionId: ${files.schema.fsPath}`);
+    return false;
+  }
+
+  await saveSchema(legacySchema);
+  await copySchemaSidecars(dpDir, legacySchema, files.description, files.customRelationships, files.erd, files.layout, manifest);
+  await saveSchema(legacySchema);
+
+  const connectionBackupRoot = vscode.Uri.joinPath(getMigrationBackupSchemasRoot(dpDir), sanitizeSchemaBundleName(legacySchema.connectionName, legacySchema.connectionId));
+  const schemaBackup = await moveToBackup(files.schema, connectionBackupRoot);
+  await appendManifestEntry(manifest, 'schema', files.schema, schemaBackup, files.connectionDir);
+
+  const descriptionBackup = await moveToBackup(files.description, connectionBackupRoot);
+  await appendManifestEntry(manifest, 'description', files.description, descriptionBackup, files.connectionDir);
+
+  const customRelationshipsBackup = await moveToBackup(files.customRelationships, connectionBackupRoot);
+  await appendManifestEntry(manifest, 'custom.relationships', files.customRelationships, customRelationshipsBackup, files.connectionDir);
+
+  const erdBackup = await moveToBackup(files.erd, connectionBackupRoot);
+  await appendManifestEntry(manifest, 'erd', files.erd, erdBackup, files.connectionDir);
+
+  const layoutBackup = await moveToBackup(files.layout, connectionBackupRoot);
+  await appendManifestEntry(manifest, 'layout', files.layout, layoutBackup, files.connectionDir);
   return true;
 }
 
@@ -253,13 +409,13 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
   const dpDir = await ensureDPDirs();
   const stateUri = getSchemaBundleMigrationStateUri(dpDir);
   if (await fileExists(stateUri)) {
-    await normalizeBundleLayoutFilenames(dpDir);
+    await normalizeSchemaLevelLayoutFilenames(dpDir);
     await removeLegacyErdDirIfEmpty(dpDir);
     return;
   }
 
   if (!await hasLegacySchemaStorage(dpDir)) {
-    await normalizeBundleLayoutFilenames(dpDir);
+    await normalizeSchemaLevelLayoutFilenames(dpDir);
     await removeLegacyErdDirIfEmpty(dpDir);
     return;
   }
@@ -276,6 +432,14 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
     const baseNames = await listLegacySchemaBaseNames(dpDir);
     const processedBases = new Set<string>();
 
+    const connectionLevelBundles = await listConnectionLevelLegacyBundles(dpDir);
+    for (const files of connectionLevelBundles) {
+      const migrated = await migrateConnectionLevelBundle(dpDir, files, manifest);
+      if (migrated) {
+        migratedBundles++;
+      }
+    }
+
     for (const baseName of baseNames) {
       const migrated = await migrateLegacyBundle(dpDir, legacyBundleFiles(dpDir, baseName), manifest);
       processedBases.add(baseName);
@@ -288,6 +452,7 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
     manifest.completedAt = new Date().toISOString();
 
     await vscode.workspace.fs.createDirectory(getMigrationBackupRoot(dpDir));
+    await vscode.workspace.fs.createDirectory(getMigrationBackupSchemasRoot(dpDir));
     await writeJson(getMigrationBackupManifestUri(dpDir), manifest);
 
     const state: MigrationState = {
@@ -300,12 +465,13 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
     };
     await vscode.workspace.fs.createDirectory(getSchemaMigrationsRoot(dpDir));
     await writeJson(stateUri, state);
-    await normalizeBundleLayoutFilenames(dpDir);
+    await normalizeSchemaLevelLayoutFilenames(dpDir);
     await removeLegacyErdDirIfEmpty(dpDir);
   } catch (err) {
     manifest.completedAt = new Date().toISOString();
     manifest.warnings.push(`Migration failed: ${String(err)}`);
     await vscode.workspace.fs.createDirectory(getMigrationBackupRoot(dpDir));
+    await vscode.workspace.fs.createDirectory(getMigrationBackupSchemasRoot(dpDir));
     await writeJson(getMigrationBackupManifestUri(dpDir), manifest);
 
     const state: MigrationState = {
@@ -319,7 +485,7 @@ export async function runSchemaBundleMigrationIfNeeded(): Promise<void> {
     };
     await vscode.workspace.fs.createDirectory(getSchemaMigrationsRoot(dpDir));
     await writeJson(stateUri, state);
-    await normalizeBundleLayoutFilenames(dpDir);
+    await normalizeSchemaLevelLayoutFilenames(dpDir);
     await removeLegacyErdDirIfEmpty(dpDir);
     Logger.error('Schema bundle migration failed', err);
   }

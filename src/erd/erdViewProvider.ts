@@ -22,6 +22,7 @@ export class ERDViewProvider implements vscode.WebviewViewProvider {
     // State
     private _currentConnectionId?: string;
     private _currentConnectionName?: string;
+    private _currentSchemaName?: string;
     private _currentData?: Record<string, unknown>;
 
     constructor(private readonly _context: vscode.ExtensionContext) {
@@ -78,6 +79,7 @@ export class ERDViewProvider implements vscode.WebviewViewProvider {
     ) {
         this._currentConnectionId = connectionProfile.id;
         this._currentConnectionName = connectionProfile.name;
+        this._currentSchemaName = introspectionOverride?.schemas?.length === 1 ? introspectionOverride.schemas[0]?.name : undefined;
 
         // Focus the view
         if (this._view) {
@@ -93,6 +95,9 @@ export class ERDViewProvider implements vscode.WebviewViewProvider {
                 const { getAdapter } = require('../connections/adapterFactory');
                 const adapter = getAdapter(connectionProfile.dialect);
                 introspection = await adapter.introspectSchema(connectionProfile, secrets);
+            }
+            if (!introspection) {
+                throw new Error('Schema introspection did not return data.');
             }
 
             // 2. Load custom relationships if available
@@ -118,7 +123,12 @@ export class ERDViewProvider implements vscode.WebviewViewProvider {
 
             const { ensureDPDirs } = require('../core/fsWorkspace');
             const dpDir = await ensureDPDirs();
-            const paths = await resolveSchemaBundlePaths(dpDir, connectionProfile.id, connectionProfile.name);
+            const paths = await resolveSchemaBundlePaths(
+                dpDir,
+                connectionProfile.id,
+                connectionProfile.name,
+                introspection.schemas?.length === 1 ? introspection.schemas[0].name : 'main'
+            );
 
             // Save ERD topology
             try {
@@ -193,7 +203,8 @@ export class ERDViewProvider implements vscode.WebviewViewProvider {
             let customRelUri: vscode.Uri;
             if (!schema.customRelationshipsPath) {
                 const dpDir = await ensureDPDirs();
-                const paths = await resolveSchemaBundlePaths(dpDir, schema.connectionId, schema.connectionName);
+                const schemaName = this._currentSchemaName || schema.schemas?.[0]?.name || 'main';
+                const paths = await resolveSchemaBundlePaths(dpDir, schema.connectionId, schema.connectionName, schemaName);
                 await vscode.workspace.fs.createDirectory(paths.bundleDir);
                 customRelUri = paths.customRelationships;
 
@@ -329,7 +340,7 @@ export class ERDViewProvider implements vscode.WebviewViewProvider {
             const { ensureDPDirs } = require('../core/fsWorkspace');
             const dpDir = await ensureDPDirs();
             if (!this._currentConnectionId) return;
-            const paths = await resolveSchemaBundlePaths(dpDir, this._currentConnectionId, data.connectionName);
+            const paths = await resolveSchemaBundlePaths(dpDir, this._currentConnectionId, data.connectionName, this._currentSchemaName || 'main');
 
             const sidecar = {
                 version: "0.1",

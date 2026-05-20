@@ -28,8 +28,8 @@ type AISettingDoc = {
 const INIT_STRUCTURE: InitStructureEntry[] = [
     { folder: '(project root)', files: ['AGENTS.md (or AGENTS_RUNQL.md)', 'README_RUNQL.md'] },
     { folder: 'RunQL', files: [] },
-    { folder: 'RunQL/queries', files: [] },
-    { folder: 'RunQL/schemas', files: ['<connection>/schema.json', '<connection>/description.json', '<connection>/custom.relationships.json', '<connection>/erd.json', '<connection>/erd.layout.json'] },
+    { folder: 'RunQL/queries', files: ['<connection>/<query>.sql', '<connection>/<query>.md'] },
+    { folder: 'RunQL/schemas', files: ['<connection>/manifest.json', '<connection>/<schema>/schema.json', '<connection>/<schema>/description.json', '<connection>/<schema>/custom.relationships.json', '<connection>/<schema>/erd.json', '<connection>/<schema>/erd.layout.json'] },
     { folder: 'RunQL/system', files: [] },
     { folder: 'RunQL/system/queries', files: ['queryIndex.json', 'queryHistory.json (after first query run)'] },
     {
@@ -161,7 +161,8 @@ const styles: Record<string, React.CSSProperties> = {
     folderItem: {
         padding: '8px',
         backgroundColor: 'var(--vscode-textCodeBlock-background)',
-        borderRadius: '3px'
+        borderRadius: '3px',
+        minWidth: 0
     },
     folderName: {
         fontSize: '12px',
@@ -268,6 +269,17 @@ const styles: Record<string, React.CSSProperties> = {
         alignItems: 'center',
         gap: '6px'
     },
+    structureRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        minWidth: 0
+    },
+    structureText: {
+        minWidth: 0,
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word'
+    },
     structureIcon: {
         width: '14px',
         height: '14px',
@@ -323,7 +335,9 @@ const styles: Record<string, React.CSSProperties> = {
         padding: 0,
         color: 'var(--vscode-descriptionForeground)',
         fontSize: '13px',
-        lineHeight: 1.5
+        lineHeight: 1.5,
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word'
     }
 };
 
@@ -418,10 +432,11 @@ function App() {
                 {isWhatsNew ? (
                     <>
                         <p style={styles.lead}>
-                            {version ? `Version ${version} includes a simpler AI settings model.` : 'This update includes a simpler AI settings model.'}
+                            {version ? `Version ${version} removes the need to specify one schema per connection and file organization changes by connection name.` : 'This update changes how RunQL stores schemas and queries.'}
                         </p>
                         <div style={styles.callout}>
-                            RunQL now groups AI setup around five settings: AI Source, AI Extension, API Provider, AI Model, and API Base URL.
+                            RunQL no longer requires one schema per connection!<br />
+                            RunQL now stores schema assets and query assets inside a connection folder for better organization and context for AI.
                         </div>
                     </>
                 ) : (
@@ -433,20 +448,30 @@ function App() {
 
             {isWhatsNew && (
                 <div style={styles.card}>
-                    <h2 style={styles.cardTitle}>AI Settings Have Changed</h2>
+                    <h2 style={styles.cardTitle}>Project Layout Has Changed</h2>
                     <p style={{ ...styles.statusNote, marginBottom: '8px' }}>
-                        The old backend and broker terminology has been removed from Settings. RunQL now uses a simpler AI setup model.
+                        RunQL now stores multiple schemas inside a connection folder.
                     </p>
                     <ul style={styles.bulletList}>
-                        <li>Use <strong>GitHub Copilot / VS Code AI</strong> when you want RunQL to use the VS Code-native AI path.</li>
-                        <li>Use <strong>AI Extension</strong> when you want Claude Code or Codex to handle supported AI tasks.</li>
-                        <li>Use <strong>Direct API</strong> when you want to connect OpenAI, Anthropic, Azure OpenAI, Ollama, or another compatible endpoint.</li>
+                        <li>Schemas now live under <code>RunQL/schemas/&lt;connection&gt;/&lt;schema&gt;/</code>.</li>
+                        <li>Each connection has a <code>manifest.json</code> that lists its available schema bundles.</li>
+                        <li>Saved queries now live under <code>RunQL/queries/&lt;connection&gt;/</code>.</li>
                     </ul>
-                    <p style={{ ...styles.statusNote, marginTop: '8px', marginBottom: 0 }}>
-                        Learn more in the <a href="#ai-settings-guide" style={styles.inlineLink}>
-                            AI Settings Guide
-                        </a> below.
+                </div>
+            )}
+
+            {isWhatsNew && (
+                <div style={styles.card}>
+                    <h2 style={styles.cardTitle}>One-Time Automatic Migration</h2>
+                    <p style={{ ...styles.statusNote, marginBottom: '8px' }}>
+                        When an initialized project opens, RunQL upgrades existing schema and query files before normal indexing starts.
                     </p>
+                    <ul style={styles.bulletList}>
+                        <li>Existing files are moved into schemas/connection_name/schema_name folders.</li>
+                        <li>Existing SQL bundles are moved into queries/connection folders.</li>
+                        <li>Any files that cannot be matched to a connection are moved to <code>RunQL/queries/Unassigned/</code>.</li>
+                        <li>Migration records and backups are stored under <code>RunQL/system/migration_backup/</code>.</li>
+                    </ul>
                 </div>
             )}
 
@@ -563,14 +588,14 @@ function App() {
                         <li key={folder} style={styles.folderItem}>
                             <div style={{ ...styles.folderName, ...styles.structureLabel }}>
                                 <StructureIcon kind="folder" />
-                                <span>{folder}</span>
+                                <span style={styles.structureText}>{folder}</span>
                             </div>
                             {files.length > 0 ? (
                                 <ul style={styles.fileList}>
                                     {files.map((file) => (
-                                        <li key={`${folder}/${file}`} style={{ ...styles.fileItem, ...styles.structureLabel }}>
+                                        <li key={`${folder}/${file}`} style={{ ...styles.fileItem, ...styles.structureRow }}>
                                             <StructureIcon kind="file" />
-                                            <span>{file}</span>
+                                            <span style={styles.structureText}>{file}</span>
                                         </li>
                                     ))}
                                 </ul>
@@ -581,12 +606,15 @@ function App() {
                     ))}
                 </ul>
                 <div style={{ marginTop: '10px', marginBottom: '10px' }}>
-                    <div style={{ ...styles.folderName, ...styles.structureLabel }}>
+                    <div style={{ ...styles.folderName, ...styles.structureRow, marginBottom: '6px' }}>
                         <StructureIcon kind="file" />
-                        <span>Initialization files:</span>
+                        <span style={styles.structureText}>Initialization files:</span>
                     </div>
-                    RunQL creates <code>AGENTS.md</code> and <code>README_RUNQL.md</code> in your project root.<br />
-                    If <code>AGENTS.md</code> already exists, it creates <code>AGENTS_RUNQL.md</code> instead.
+                    <div style={{ fontSize: '13px', lineHeight: 1.5 }}>
+                        RunQL creates <code>AGENTS.md</code> and <code>README_RUNQL.md</code> in your project root.
+                        <br />
+                        If <code>AGENTS.md</code> already exists, it creates <code>AGENTS_RUNQL.md</code> instead.
+                    </div>
                 </div>
             </div>
 

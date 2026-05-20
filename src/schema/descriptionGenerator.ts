@@ -70,7 +70,8 @@ export async function generateDescriptionsWithAI(context: vscode.ExtensionContex
     // Use schemaFileBaseName.
 
     // Load existing
-    let existing = await loadDescriptions(introspection.connectionId, introspection.connectionName);
+    const targetSchemaName = schemas[0]?.name || 'main';
+    let existing = await loadDescriptions(introspection.connectionId, introspection.connectionName, targetSchemaName);
 
     if (!existing) {
         existing = {
@@ -80,7 +81,7 @@ export async function generateDescriptionsWithAI(context: vscode.ExtensionContex
             connectionId: introspection.connectionId,
             connectionName: introspection.connectionName,
             dialect: introspection.dialect,
-            schemaName: schemas[0].name,
+            schemaName: targetSchemaName,
             schemaDescription: undefined, // Placeholder to maintain property order
             tables: {},
             columns: {}
@@ -201,13 +202,13 @@ export async function generateDescriptionsWithAI(context: vscode.ExtensionContex
         // Update timestamp
         existing!.generatedAt = new Date().toISOString();
 
-        await saveDescriptions(introspection.connectionId, introspection.connectionName, existing!);
+        await saveDescriptions(introspection.connectionId, introspection.connectionName, existing!, targetSchemaName);
 
         vscode.commands.executeCommand("runql.view.refreshSchemas"); // Refresh UI
 
         // Open the file for the user
         const dpDir = await import('../core/fsWorkspace').then(m => m.ensureDPDirs());
-        const uri = await getDescriptionUriForConnection(dpDir, introspection.connectionId, introspection.connectionName);
+        const uri = await getDescriptionUriForConnection(dpDir, introspection.connectionId, introspection.connectionName, targetSchemaName);
         const doc = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(doc);
     });

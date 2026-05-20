@@ -1975,19 +1975,23 @@ async function initializeProjectComponents(context: vscode.ExtensionContext) {
     const { ensureReadmeMd } = require('./core/fsWorkspace');
     const { HistoryService } = require('./services/historyService');
     const { runSchemaBundleMigrationIfNeeded } = require('./schema/storageMigration');
+    const { runQueryFolderMigrationIfNeeded } = require('./queryLibrary/queryMigration');
 
     // 1. Schema storage migration
     await runSchemaBundleMigrationIfNeeded();
 
-    // 2. Query Index
+    // 2. Query folder migration
+    await runQueryFolderMigrationIfNeeded();
+
+    // 3. Query Index
     await queryIndex.initialize();
 
-    // 3. Prompt Files
+    // 4. Prompt Files
     await initializePromptFiles();
 
-    // 4. Documentation
+    // 5. Documentation
     await ensureReadmeMd();
-    // 5. History Service
+    // 6. History Service
     await HistoryService.getInstance().initialize(context);
 
   } catch (err) {

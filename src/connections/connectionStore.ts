@@ -3,6 +3,7 @@ import { ConnectionProfile, ConnectionSecrets } from "../core/types";
 import { ensureDPDirs, fileExists, readJson, writeJson } from "../core/fsWorkspace";
 import { Logger } from '../core/logger';
 import { normalizeConnectionType } from './connectionType';
+import { isReservedConnectionFolderName, normalizedConnectionFolderKey } from '../schema/schemaPaths';
 
 let secretStorage: vscode.SecretStorage | undefined;
 
@@ -75,6 +76,11 @@ export async function saveConnectionProfile(profile: ConnectionProfile): Promise
   let connections = await loadConnectionProfiles();
   profile.connectionType = normalizeConnectionType(profile.connectionType);
 
+  const nameError = await validateConnectionName(profile.name, profile.id);
+  if (nameError) {
+    throw new Error(nameError);
+  }
+
   const idx = connections.findIndex(c => c.id === profile.id);
   if (idx >= 0) {
     // Check for name change
@@ -83,9 +89,11 @@ export async function saveConnectionProfile(profile: ConnectionProfile): Promise
       // Renamed!
       try {
         const { renameSchemaFiles } = require('../schema/schemaStore');
+        const { renameQueryConnectionFolder } = require('../queryLibrary/queryStorage');
         await renameSchemaFiles(profile.id, existing.name, profile.name);
+        await renameQueryConnectionFolder(profile.id, existing.name, profile.name);
       } catch (e) {
-        Logger.error("Failed to rename schema files:", e);
+        Logger.error("Failed to rename connection-scoped files:", e);
       }
     }
     connections[idx] = profile;
@@ -107,6 +115,17 @@ export async function deleteConnection(id: string): Promise<void> {
     throw new Error("No workspace folder open.");
   }
   let connections = await loadConnectionProfiles();
+  const existing = connections.find(c => c.id === id);
+  if (existing) {
+    try {
+      const { archiveSchemaFilesForDeletedConnection } = require('../schema/schemaStore');
+      const { archiveQueryConnectionFolder } = require('../queryLibrary/queryStorage');
+      await archiveSchemaFilesForDeletedConnection(existing.id, existing.name);
+      await archiveQueryConnectionFolder(existing.id, existing.name);
+    } catch (e) {
+      Logger.error("Failed to archive connection-scoped files:", e);
+    }
+  }
   connections = connections.filter(c => c.id !== id);
 
   const file: ConnectionsFile = {
@@ -181,8 +200,12 @@ export async function validateConnectionName(name: string, excludeId?: string): 
   const clean = name.trim();
   if (!clean) return "Name cannot be empty";
 
-  // Check against existing names (case-insensitive)
-  const conflict = profiles.find(p => p.name.toLowerCase() === clean.toLowerCase() && p.id !== excludeId);
+  if (isReservedConnectionFolderName(clean)) {
+    return "'Unassigned' is reserved by RunQL. Choose a different connection name.";
+  }
+
+  const cleanKey = normalizedConnectionFolderKey(clean);
+  const conflict = profiles.find(p => normalizedConnectionFolderKey(p.name) === cleanKey && p.id !== excludeId);
   if (conflict) {
     return `Connection name '${clean}' is already in use.`;
   }

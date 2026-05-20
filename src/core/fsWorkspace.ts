@@ -100,31 +100,34 @@ This repo stores SQL, schemas, and ERD metadata in known locations. When a user 
 ## Source Locations
 
 - Existing queries: \`RunQL/queries/\` (may include subdirectories).
-- Query index: \`RunQL/system/queryIndex.json\` (this is auto updated when a query is saved)
-- Schemas and descriptions: \`RunQL/schemas/\` (these are auto create when a connection is added)
-- Schema and ERD bundles: \`RunQL/schemas/<connection>/\` (these get auto created when a user introspects or opens an ERD)
+- Query index: \`RunQL/system/queries/queryIndex.json\` (this is auto updated when a query is saved)
+- Connection-scoped queries: \`RunQL/queries/<connection>/\`
+- Schema manifest: \`RunQL/schemas/<connection>/manifest.json\`
+- Schema bundles: \`RunQL/schemas/<connection>/<schema>/\`
 
 ## Required Workflow (SQL Queries)
 
 1. Search for existing queries first.
-   - Check \`RunQL/queries/\` (including subdirectories) and \`RunQL/system/queryIndex.json\`.
+   - Check \`RunQL/system/queries/queryIndex.json\`, then \`RunQL/queries/<connection>/\` (including subdirectories).
 2. If nothing relevant exists, read the schema and docs.
-   - Use \`RunQL/schemas/\` for table/column definitions, relationships (if available), and descriptions.
-   - Use \`RunQL/schemas/<connection>/erd.json\` and \`erd.layout.json\` if populated, to understand joins and relationships.
+   - Use \`RunQL/schemas/<connection>/manifest.json\` to find available schemas.
+   - Read only the relevant \`RunQL/schemas/<connection>/<schema>/schema.json\` and \`description.json\`.
+   - For cross-schema SQL, read only the referenced schema folders.
+   - Ignore \`*_deleted\` folders unless the user explicitly asks for archived or deleted-connection content.
 3. Only then should you create a new SQL query file (.sql)
    - Prefer to reuse or extend existing patterns when possible.
-   - Do NOT create any other RunQL files when creating sql - only create .sql files
+   - Put saved SQL under \`RunQL/queries/<connection>/\`, not under schema folders.
 
 ## Required Workflow (Documentation Requests)
 
 1. SQL Query Documentation:
    - If a user asks you to document an SQL query, follow the prompt in \`RunQL/system/prompts/markdownDoc.txt\`.
-   - Output the file in the exact same directory as the query (\`RunQL/queries/\`) with the same name but a different extension.
+   - Output the file in the exact same directory as the query with the same name but a different extension.
    - Example: \`olympic_gold.sql\` -> \`olympic_gold.md\`.
 2. Schema Description:
    - If a user asks you to describe a schema, follow the prompt in \`RunQL/system/prompts/describeSchema.txt\`.
-   - Output the results to the matching schema bundle folder inside \`RunQL/schemas/\`.
-   - Example: \`RunQL/schemas/olympics_db/description.json\`.
+   - Output the results to the matching schema bundle folder inside \`RunQL/schemas/<connection>/<schema>/\`.
+   - Example: \`RunQL/schemas/Production/billing/description.json\`.
 3. Inline Comments:
    - If a user asks you to create inline comments on an SQL file, follow the prompt in \`RunQL/system/prompts/inlineComments.txt\`.
 
@@ -166,7 +169,9 @@ This project uses RunQL for SQL workflows and schema exploration.
 ## Folder Structure
 
 - **RunQL/queries/**: Saved SQL queries.
-- **RunQL/schemas/**: Per-connection schema bundles including descriptions and ERD files.
+- **RunQL/queries/<connection>/**: Saved SQL queries grouped by connection. Queries may join across schemas.
+- **RunQL/schemas/<connection>/manifest.json**: Lists schema bundles for a connection.
+- **RunQL/schemas/<connection>/<schema>/**: Per-schema schema bundle including descriptions and ERD files.
 - **RunQL/system/**: generated indexes, migration backups, and prompts (optional to commit).
 `;
 

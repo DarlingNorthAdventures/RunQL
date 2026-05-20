@@ -5,6 +5,7 @@ import { loadConnectionProfiles } from '../connections/connectionStore';
 import { canonicalizeSql } from '../core/hashing';
 import { ErrorHandler, ErrorSeverity, formatFileSystemError } from '../core/errorHandler';
 import { resolveEffectiveSqlDialect } from '../core/sqlUtils';
+import { UNASSIGNED_QUERY_FOLDER, sanitizeQueryConnectionFolderName } from './queryStorage';
 
 export async function createSqlFile(context: vscode.ExtensionContext) {
     // 1. Get Workspace Folder
@@ -21,10 +22,28 @@ export async function createSqlFile(context: vscode.ExtensionContext) {
         return;
     }
 
-    // 2. Determine Folder
+    // 2. Determine connection-scoped folder
     const config = vscode.workspace.getConfiguration('runql');
     const relFolder = config.get<string>('query.defaultFolder', 'RunQL/queries');
-    const folderPath = path.join(wsFolder.uri.fsPath, relFolder);
+    const activeConnId = context.workspaceState.get<string>("runql.activeConnectionId");
+    let connName = "none";
+    let connId = "";
+    let dialect = "unknown";
+
+    if (activeConnId) {
+        const profiles = await loadConnectionProfiles();
+        const profile = profiles.find(p => p.id === activeConnId);
+        if (profile) {
+            connName = profile.name;
+            connId = profile.id;
+            dialect = resolveEffectiveSqlDialect(profile);
+        }
+    }
+
+    const connectionFolder = connName === 'none'
+        ? UNASSIGNED_QUERY_FOLDER
+        : sanitizeQueryConnectionFolderName(connName, connId);
+    const folderPath = path.join(wsFolder.uri.fsPath, relFolder, connectionFolder);
 
     if (!fs.existsSync(folderPath)) {
         fs.mkdirSync(folderPath, { recursive: true });
@@ -63,22 +82,6 @@ export async function createSqlFile(context: vscode.ExtensionContext) {
     // 6. Prepare Content
     const sqlPath = path.join(targetDir, `${baseName}.sql`);
     const mdPath = path.join(targetDir, `${baseName}.md`);
-
-    // Context for Metadata
-    const activeConnId = context.workspaceState.get<string>("runql.activeConnectionId");
-    let connName = "none";
-    let connId = "";
-    let dialect = "unknown";
-
-    if (activeConnId) {
-        const profiles = await loadConnectionProfiles();
-        const profile = profiles.find(p => p.id === activeConnId);
-        if (profile) {
-            connName = profile.name;
-            connId = profile.id;
-            dialect = resolveEffectiveSqlDialect(profile);
-        }
-    }
 
     const today = new Date().toISOString().split('T')[0];
     const niceTitle = baseName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');

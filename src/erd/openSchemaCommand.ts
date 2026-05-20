@@ -36,8 +36,14 @@ export async function openSchemaErdCommand(context: vscode.ExtensionContext, ite
         if (!secrets) return;
 
         if (item.schemaModel?.name) {
+            const { ensureDPDirs } = require('../core/fsWorkspace');
+            const { resolveSchemaBundlePaths } = require('../schema/schemaPaths');
+            const dpDir = await ensureDPDirs();
+            const paths = await resolveSchemaBundlePaths(dpDir, connectionId, item.introspection.connectionName, item.schemaModel.name);
             const filtered: SchemaIntrospection = {
                 ...item.introspection,
+                docPath: paths.description.fsPath,
+                customRelationshipsPath: paths.customRelationships.fsPath,
                 schemas: item.introspection.schemas.filter((s: { name: string }) => s.name === item.schemaModel?.name)
             };
             await provider.showERD(profile, secrets, filtered);
