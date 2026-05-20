@@ -126,3 +126,19 @@ Bumping the version to fix the connection with the RunQL-IDE for auto-updates.
 ### Changes
 - When a user edits multiple rows of data the confirmation dialog would show the SQL statements in a collapsed state.  Now this dialog window is scrollable and the statements are not collapsed, making the statements more visible.
 - Fix for unnecessary migration folders getting created on initialization of a new project folder.
+
+## [1.8.0] - 2026-05-20
+
+### Changes
+- Remove the restriction of selecting a specific schema per connection.
+- Implement multi-schema storage and support
+- Split schema artifacts into RunQL/schemas/<connection>/<schema>/ folders
+- Add per-connection schema manifest.json files
+- Add schema storage migration with backups and manifest records
+- Add query folder migration into RunQL/queries/<connection>/
+- Default new saved queries to the active connection folder or Unassigned
+- Archive schema/query folders with _deleted on connection delete
+- Rename schema/query folders and metadata when connections are renamed
+- Update AI schema context, ERD, description generation/import paths for schema-level bundles
+- Update generated AGENTS/README guidance and What’s New Welcome page
+- Remove MySQL/MariaDB database/schema field from connection setup as it is no longer needed
